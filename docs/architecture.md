@@ -93,7 +93,11 @@ by (pack id, version) through a registry lookup
 (`definitions.load_definition_pack_version`): the comparative
 layer needs them, because a prior period must always be
 recomputed — when it is recomputed at all — under the
-definitions that produced its signed pack.
+definitions that produced its signed pack. Which version
+governs a *new* period is a governed question of its own —
+measured by dry-run, decided by a recorded activation,
+selected by a printed rule — see "Definition change
+governance" below.
 
 ## Marts: governed, stamped, disposable
 
@@ -518,6 +522,118 @@ acceptances, both on the face. The evidence bundle's
 completeness rule bends in exactly the same place and no
 further — see the next section.
 
+## Definition change governance: the ruler changes by act
+
+Everything above assumes the definition pack — the catalog
+of what the figures *are* — and rounds 2 and 4 taught the
+close to live with two versions at once: comparatives cite
+each period's own version, flux flags the figures whose
+definition changed. What none of that governed was the
+change itself. A new pack file could simply appear in the
+registry, and the next run would pick it up; the
+`DEFINITION_CHANGED` flags would report, afterwards, that
+the ruler had been swapped mid-argument. `governance.py`
+builds the missing front door, in three parts.
+
+**The dry-run: impact first, computed.** Given a candidate
+version and a period with a signed pack, the period is
+recomputed twice from its stamped sources — under the
+version the signed pack cites and under the candidate — and
+the two results are diffed into a change list: figures whose
+value moves (recomputed baseline → candidate value, delta,
+delta %, each judged against the flux schedule's standing
+materiality bars in `policy.py`), figures the candidate
+adds, figures it drops, and the variance families each side's
+verification produces over those sources, so a tie-out the
+candidate would newly fail (or newly pass) is computed here,
+not asserted. Three disciplines keep the measurement honest:
+
+- *The values compared are the verifier's.* Each side runs
+  the deployment's engine over freshly built marts, and the
+  diff reads the verifier checks' recomputed values — never
+  the signed pack's recorded figures, never the engine's
+  proposals. The verifier's independence (its own
+  aggregation, its own duplicate scan) is inherited whole.
+- *Both sides convert at the signed pack's stamped rate
+  table* — the round-6 rule applied to a recomputation. A
+  rate table edited in a batch since sign-off then raises
+  `RATE_TABLE_MISMATCH` on both sides alike and reprices
+  neither; the candidate's effect is the only difference
+  between the two columns.
+- *The baseline is audited, not assumed.* A signed figure
+  the baseline recomputation does not reproduce is listed as
+  a baseline discrepancy (signed value beside recomputed) —
+  the dry-run reports that its reference no longer
+  reproduces instead of quietly measuring from doctored
+  numbers.
+
+The report is a pure function of its inputs and carries no
+timestamp, so its canonical digest (the evidence bundle's
+canonical form) is stable across recomputation — and the
+service enforces the stability: re-running a recorded
+dry-run returns the record, and if recomputation now
+produces a different digest, that is a refusal naming the
+drift, not a quiet rewrite. A dry-run signs nothing and
+activates nothing; it is a record an act can cite.
+
+**Activation: governing is a named act.** A candidate
+governs future periods only through a `PackActivation`:
+actor, reason, the version, the period it governs from, and
+the dry-run it relies on, cited by id and digest. The
+refusals each name their ground — an unnamed actor, a
+missing reason, a version the registry does not hold, no
+dry-run on record for the version (the impact must exist
+before the act), the version already governing the
+from-period, and a from-period that is already signed. The
+last is the load-bearing one: an activation reaches only
+periods not yet signed, so a signed period's cited version
+is immutable by construction, and comparatives keep citing
+each period's own version exactly as rounds 2 and 4 built
+them. Activations are append-only; changing course is a new
+activation for the same from-period, which supersedes the
+earlier act on the record — the earlier act is never
+edited or deleted, and the superseded never governs.
+
+**Selection: a rule, printed.** Which version governs a
+period is computed from the activation records — the
+governing activation is the non-superseded act with the
+greatest from-period not after the period, ties broken by
+recording order — or, with no governing act, the
+deployment's wired default. The rule is applied twice: at
+run creation, where the answer is recorded on the run with
+its source ("(activation ACT-…)" or "(deployment default)"),
+and again at pack build, which is the computation that
+actually governs the figures — an activation landing
+between creation and build moves the build, and the pack's
+audit says so, naming the run's recorded expectation beside
+the version that governed. The first pack governed by a
+newly activated version states the change on its face
+(`BoardPack.definition_change`): version from → to, the
+activation's actor and reason, and the cited dry-run's
+headline counts. The statement is prepared only when an
+activation governs the period *and* the prior signed pack
+cites a different version — a second period under the same
+activated version states nothing, because nothing changed
+under it. The evidence bundle carries the section under the
+same v1 rule as every layer before it (`definition_change:
+null` for a pack with no change to state), with its own
+completeness clause: the cited activation and dry-run must
+stand in the store and the stored digest must match the
+citation, or generation refuses with the gap named — a
+bundle that cited a vanished act would be asserting the
+very thing it exists to prove.
+
+The staged candidate is v1.2.0: account 6400 leaves
+operating expenses for a metric of its own, with a
+consolidated line over it. It is a presentation change —
+operating income cannot move, since the split adds back
+exactly what it removes — which is what makes it the honest
+test of the machinery: over signed October the dry-run must
+show four moved figures (opex at both USD entities and the
+two consolidated lines standing on it), four added, none
+dropped, none material, and the eval's gold for all of it is
+derived from the journals by hand.
+
 ## The audit evidence pack: projection, not computation
 
 A signed pack is the close's internal record. The auditors,
@@ -547,7 +663,9 @@ intercompany pairs with both stated figures and their
 verdicts, when the pack carries them; the
 restatement report and its acknowledgement; the dispositions
 on the pack's face and the opening items it carried in, when
-it carries them; the standing
+it carries them; the definition change the pack was first
+governed under, with the activation and dry-run behind it,
+when it carries one; the standing
 variances; and the sign-off record — decision, controller,
 reason, time — with the run's checklist state.
 
@@ -633,25 +751,38 @@ embedded in the artifact that cites it.
 
 ## Data model
 
-Two migrations, four JSONB tables mirroring the sibling
+Three migrations, five JSONB tables mirroring the sibling
 blueprints' record discipline:
 
 - `source_batches` — every extract ever ingested, append-only
   (`0001_close.sql`);
-- `close_runs` — run state incl. the checklist and slot map;
+- `close_runs` — run state incl. the checklist and slot map,
+  and the definition version the selection rule recorded for
+  the run's period;
 - `board_packs` — figures, variances, stamps, narrative,
   sign-off, and (from the second period) the comparative
   layer: cited prior figures, the restatement report, and its
   acknowledgement; and the disposition layer: the acceptances
   recorded on the pack or carried onto its face, and the
-  opening items it was re-tested against. Both ride the
-  JSONB payload — no migration; the store's shape was already
-  "the pack record, whole";
+  opening items it was re-tested against; and, on the first
+  pack governed by a newly activated definition version, the
+  change statement. All ride the JSONB payload — no
+  migration; the store's shape was already "the pack record,
+  whole";
 - `evidence_bundles` — one row per generated audit bundle
   (`0002_evidence_bundles.sql`): pack and period for lookup,
   the object-store keys, the digest, the counts, and the
   generation time. The bundle bytes themselves are not in the
-  database.
+  database;
+- `definition_governance` — the dry-run reports and the
+  activations (`0003_definition_governance.sql`): one JSONB
+  record per act of governance, keyed by record id with kind,
+  pack, and version columns for lookup. This one did need a
+  migration, on the evidence-bundle precedent: governance
+  records belong to the definition registry, not to any one
+  run or pack — an activation is written before the periods
+  it governs have runs at all — so they cannot ride another
+  aggregate's payload.
 
 Raw extract bytes are additionally archived to object storage
 at ingestion (`extracts/<period>/<batch_id>.json`), so the

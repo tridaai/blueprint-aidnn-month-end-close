@@ -316,7 +316,9 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   cite, the **rate provenance** (both closes' stamped rate
   tables and the rates that moved between them), the flux schedule, any restatement and its
   acknowledgement, any dispositions on the pack's face and the
-  opening items it carried in, and the sign-off record with the checklist
+  opening items it carried in, any definition change the pack
+  was first governed under — the activation that made the new
+  version govern and the dry-run behind it — and the sign-off record with the checklist
   state the signature froze. The bundle is a **projection of stored records** —
   it recomputes nothing — it is refused for anything but a
   `SIGNED_OFF` pack (state named), it is checked for
@@ -324,6 +326,45 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   naming the gap), and its canonical bytes regenerate
   byte-identically, with the SHA-256 digest carried on the
   bundle record.
+
+- **Definition changes are governed, not dropped in** — the
+  definition pack is the close's constitution, and changing
+  it is an act with its impact printed first. A candidate
+  version's effect is computed as a **dry-run** over a period
+  with a signed pack: that period is recomputed from its
+  stamped sources under its own cited version and under the
+  candidate — both at the rate table the signed pack stamps —
+  and the change list is figures moved (old → new, with
+  deltas), figures added, figures dropped, and variance
+  families whose membership would change, each moved figure
+  judged against the close's standing materiality ruler. The
+  values compared are the verifier's recomputations, never
+  the signed pack's recorded figures; a signed figure that no
+  longer reproduces from its own sources surfaces as a named
+  baseline discrepancy instead of poisoning the measurement.
+  The report carries no timestamp, so its digest is stable —
+  and a candidate becomes the pack for future periods only
+  through a named **activation** (actor + reason, an
+  append-only record) that cites a recorded dry-run's id and
+  digest. Activating without a dry-run, into an
+  already-signed period, or over the version that already
+  governs is refused, each refusal naming its ground. Which
+  version governs a period is a **computed rule** — the
+  latest activation whose from-period has arrived, else the
+  deployment's wired default — printed on the run and stamped
+  on the pack; a signed period's cited version never changes.
+  The first pack governed by a new version **states the
+  change on its face** (version from → to, who activated it
+  and why, the dry-run's headline counts), beyond the
+  per-figure `DEFINITION_CHANGED` flags, and its evidence
+  bundle carries the activation and the dry-run report. The
+  demo's fourth act stages it: candidate v1.2.0 takes
+  insurance premiums out of operating expenses onto their own
+  line — measured over signed October first (four figures
+  move, four are born, none material), then activated for
+  November by the controller, with November's run created on
+  a service still wired to the old version to show the rule,
+  not the wiring, doing the selecting.
 
 ## The aidnn seam
 
@@ -386,6 +427,14 @@ Copy `.env.example` to `.env` and set what you use:
   small (base aggregates + five derived ops). A deployment
   that needs a new op adds it in code, reviewed — definitions
   are data, never strings evaluated at runtime.
+- Definition governance is forward-only, deliberately. There
+  is no un-activation and no edit to a recorded act: changing
+  course is a new activation for the same from-period that
+  supersedes the earlier one, and the superseded act stays on
+  the record. A dry-run measures a candidate only against a
+  period that closed and signed — there is no measuring
+  against a draft close, because a draft's sources are still
+  moving.
 - The signed pack is a record of approval, not a posting.
   Filing, posting, and payment stay in the customer's systems
   of record, by design.
@@ -478,6 +527,24 @@ gates on it:
   and reason quoted — retests them STILL_PRESENT, blocks
   again, and a second acceptance signs with carry 2 stated
   on the face.
+- **Definition governance** — a sixth act closes September
+  and October canonically, then governs the v1.2.0 candidate:
+  activation without a dry-run is refused by name; the
+  dry-run over signed October reproduces the hand-computed
+  change list exactly (four moved figures with their old →
+  new values, four added, none dropped, none material, no
+  variance-family change, no baseline discrepancy — gold
+  derived from the journals by hand); recomputing the
+  dry-run returns the same record and digest while both
+  signed packs stay byte-identical; the activation's
+  refusals (unnamed actor, missing reason, signed
+  from-period, already-governing version) each name their
+  ground; November's run, created on a service still wired
+  to v1.1.0, selects v1.2.0 by rule and its figures are the
+  candidate's; the first governed pack states the change on
+  its face; and its evidence bundle carries the activation
+  and the dry-run, while September's bundle — a close with
+  no change to state — projects `definition_change: null`.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -494,6 +561,7 @@ src/aidnn_close_agent/
   verifier.py       the independent recomputation — separate code path
   comparatives.py   prior-period comparatives, restatement detection
   dispositions.py   variance disposition: acceptances, coverage, the carry
+  governance.py     definition change: dry-runs, activations, selection
   evidence.py       the audit evidence pack: gated, checked projection
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
@@ -501,7 +569,7 @@ src/aidnn_close_agent/
   service.py        runs, ingestion, staleness, sign-off discipline
   store.py / db.py  batches, runs, packs in Postgres (or the double)
   datasets.py       the synthetic Harborlight world — gold by construction
-  definition_packs/ the bundled catalog (harborlight-close v1.0.0 + v1.1.0)
+  definition_packs/ the bundled catalog (harborlight-close v1.0.0, v1.1.0, and the v1.2.0 candidate)
 migrations/         numbered SQL, applied at startup
 evals/              the golden close pack and its runner
 docs/               architecture.md — the deployment, in depth
