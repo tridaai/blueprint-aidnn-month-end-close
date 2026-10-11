@@ -125,6 +125,41 @@ gates:
   converted off-stamp — with no FIGURE_MISMATCH blurring the
   break.
 
+A fifth act exercises **variance disposition** — the second
+honest exit from a block. The staged October disagreement
+closes on a fresh store; the controller accepts both of its
+blocking variances in writing; the rebuild is presented and
+signed with the acceptances on its face; and November (the
+same trading one month on, the break still booked) opens the
+carried items. Its gates:
+
+- **disposition requires a named controller and a reason** —
+  both refusals raised, each naming its ground;
+- **a non-blocking flag cannot be dispositioned** —
+  ``DEFINITION_CHANGED`` is a comparison flag, not a variance,
+  and the refusal says there is no blocking variance by that
+  name to accept;
+- **one undispositioned blocker still refuses** — with only
+  one of the two variances accepted, the rebuild stays
+  BLOCKED and sign-off is refused;
+- **all dispositioned: the pack presents and signs** — every
+  blocking variance covered, the rebuild reaches the gate and
+  a named controller signs it;
+- **the verifier's verdict is unchanged by disposition** —
+  the signed pack's variances are the blocked pack's, code
+  and detail word for word, and its figures identical;
+- **dispositions on the signed face and in the bundle** —
+  the signed pack lists both acceptances with actor and
+  reason, and its evidence bundle carries the dispositions
+  section beside the variances;
+- **the carried item opens the next period, retested** —
+  November's pack opens both items with their origin
+  (period, pack, controller, reason quoted), the retest
+  verdict is STILL_PRESENT, and the pack blocks again;
+- **the second carry is counted** — accepted again in
+  November, the new records and the signed face state
+  carry 2 with the October origin.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -151,10 +186,12 @@ from aidnn_close_agent.datasets import (  # noqa: E402
     IC_VARIANT_FLAGGED,
     IC_VARIANT_PAIR,
     PERIOD,
+    PERIOD_NOVEMBER,
     PERIOD_OCTOBER,
     RATE_CHANGED_METRICS,
     RESTATEMENT_AFFECTED,
     RESTATEMENT_BATCH_ID,
+    build_november_world,
     build_october_world,
     build_world,
     october_ic_variant_batch,
@@ -298,6 +335,9 @@ def evaluate() -> dict:
     rate_checks = _evaluate_rate_checks()
     results.update(rate_checks["results"])
 
+    dispositions = _evaluate_dispositions()
+    results.update(dispositions["results"])
+
     first_pair_ok = (
         len(first.ic_pairs) == 1
         and first.ic_pairs[0].verdict == "ONE_SIDED"
@@ -340,6 +380,7 @@ def evaluate() -> dict:
         **october["gates"],
         **ic_variant["gates"],
         **rate_checks["gates"],
+        **dispositions["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -827,6 +868,188 @@ def _evaluate_rate_checks() -> dict:
         and not report.passed
     )
     out["results"]["rate_offstamp_figures"] = sorted(per_figure)
+    return out
+
+
+class _WorldConnector:
+    """Serves one staged world's batches — November's route
+    into act five."""
+
+    name = "world"
+
+    def __init__(self, world) -> None:
+        self._batches = {b.batch_id: b for b in world.batches}
+
+    def available(self):
+        return list(self._batches)
+
+    def fetch(self, batch_id: str):
+        return self._batches[batch_id]
+
+
+def _evaluate_dispositions() -> dict:
+    """Act five: variance disposition. The staged October
+    disagreement is accepted in writing by a named controller,
+    the rebuild signs with the acceptances on its face and the
+    verifier's verdict word-for-word unchanged, and November
+    opens the carried items — still present, blocking again,
+    accepted a second time with the count stated."""
+    controller = "Eval Controller"
+    reason_pair = (
+        "HLE's EUR 500 understatement is a known booking error "
+        "in their close, confirmed with HLE's controller; "
+        "immaterial to the group. Accepted for October and "
+        "carried — it must clear in November's close."
+    )
+    reason_leg = (
+        "The unmatched leg is the same understatement seen from "
+        "the elimination side; accepted with it, on the same terms."
+    )
+    gates = {
+        "disposition requires a named controller and a reason": False,
+        "a non-blocking flag cannot be dispositioned": False,
+        "one undispositioned blocker still refuses sign-off": False,
+        "all dispositioned: the pack presents and signs": False,
+        "the verifier's verdict is unchanged by disposition": False,
+        "dispositions on the signed face and in the bundle": False,
+        "carried item opens next period, retested still present": False,
+        "second carry counted on the face": False,
+    }
+    out: dict = {"results": {}, "gates": gates}
+    store = InMemoryCloseStore()
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    service = CloseService(
+        pipeline=pipeline, store=store,
+        connector=_VariantConnector(DatasetConnector()),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    world = build_october_world()
+    run = service.create_run(PERIOD_OCTOBER)
+    service.ingest(run.run_id, [b.batch_id for b in world.batches])
+    blocked = service.build_pack(run.run_id)
+    if blocked.status != "BLOCKED":
+        return out
+    blocked_variances = [(v.code, v.detail) for v in blocked.variances]
+    blocked_figures = [(f.metric_id, f.entity_id, f.value, f.status)
+                         for f in blocked.figures]
+
+    refusals = []
+    for kwargs in ({"actor": "", "reason": reason_pair},
+                   {"actor": controller, "reason": ""}):
+        try:
+            service.record_disposition(blocked.pack_id,
+                                       code="IC_DISAGREEMENT", **kwargs)
+        except GateError as exc:
+            refusals.append(str(exc))
+    gates["disposition requires a named controller and a reason"] = (
+        len(refusals) == 2
+        and "must name its controller" in refusals[0]
+        and "must carry a reason" in refusals[1]
+    )
+    try:
+        service.record_disposition(blocked.pack_id,
+                                   code="DEFINITION_CHANGED",
+                                   actor=controller,
+                                   reason="accept the flag")
+        flag_refused = ""
+    except GateError as exc:
+        flag_refused = str(exc)
+    gates["a non-blocking flag cannot be dispositioned"] = \
+        "carries no blocking variance DEFINITION_CHANGED" in flag_refused
+
+    service.record_disposition(blocked.pack_id, code="IC_DISAGREEMENT",
+                               actor=controller, reason=reason_pair)
+    partial = service.build_pack(run.run_id)
+    sign_refused = False
+    try:
+        service.sign_off(partial.pack_id, "sign", controller)
+    except GateError:
+        sign_refused = True
+    gates["one undispositioned blocker still refuses sign-off"] = (
+        partial.status == "BLOCKED" and sign_refused)
+
+    service.record_disposition(blocked.pack_id, code="UNMATCHED_IC_LEG",
+                               actor=controller, reason=reason_leg)
+    presented = service.build_pack(run.run_id)
+    signed = None
+    if presented.status == "AWAITING_CONTROLLER":
+        signed = service.sign_off(presented.pack_id, "sign", controller,
+                                  "accepted on the record")
+    gates["all dispositioned: the pack presents and signs"] = (
+        signed is not None and signed.status == "SIGNED_OFF")
+    if signed is None:
+        return out
+    gates["the verifier's verdict is unchanged by disposition"] = (
+        [(v.code, v.detail) for v in signed.variances] == blocked_variances
+        and [(f.metric_id, f.entity_id, f.value, f.status)
+             for f in signed.figures] == blocked_figures
+    )
+    out["results"]["dispositioned_variances"] = [
+        v.code for v in signed.variances]
+    out["results"]["signed_dispositions"] = [
+        d.model_dump() for d in signed.dispositions]
+
+    service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    gates["dispositions on the signed face and in the bundle"] = (
+        len(signed.dispositions) == 2
+        and all(d.actor == controller and d.reason
+                for d in signed.dispositions)
+        and document["dispositions"] is not None
+        and len(document["dispositions"]) == 2
+        and {d["code"] for d in document["dispositions"]}
+        == {"IC_DISAGREEMENT", "UNMATCHED_IC_LEG"}
+    )
+
+    november_world = build_november_world("54500.00")
+    november = CloseService(
+        pipeline=PackPipeline(
+            engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+            checkpointer=MemorySaver()),
+        store=store, connector=_WorldConnector(november_world),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    nov_run = november.create_run(PERIOD_NOVEMBER)
+    november.ingest(nov_run.run_id,
+                    [b.batch_id for b in november_world.batches])
+    nov_pack = november.build_pack(nov_run.run_id)
+    items = nov_pack.opening_items
+    gates["carried item opens next period, retested still present"] = (
+        nov_pack.status == "BLOCKED"
+        and len(items) == 2
+        and all(item.retest == "STILL_PRESENT" for item in items)
+        and all(item.origin_period == PERIOD_OCTOBER for item in items)
+        and all(item.dispositioned_by == controller for item in items)
+        and {item.code: item.reason for item in items}.get(
+            "IC_DISAGREEMENT") == reason_pair
+    )
+    out["results"]["november_opening_items"] = [
+        item.model_dump() for item in items]
+
+    november.record_disposition(nov_pack.pack_id, code="IC_DISAGREEMENT",
+                                actor=controller, reason=reason_pair)
+    november.record_disposition(nov_pack.pack_id, code="UNMATCHED_IC_LEG",
+                                actor=controller, reason=reason_leg)
+    nov_presented = november.build_pack(nov_run.run_id)
+    nov_signed = None
+    if nov_presented.status == "AWAITING_CONTROLLER":
+        nov_signed = november.sign_off(nov_presented.pack_id, "sign",
+                                       controller, "second carry")
+    gates["second carry counted on the face"] = (
+        nov_signed is not None
+        and len(nov_signed.dispositions) == 2
+        and all(d.carry_number == 2 for d in nov_signed.dispositions)
+        and all(d.origin_period == PERIOD_OCTOBER
+                for d in nov_signed.dispositions)
+    )
+    out["results"]["november_second_carry"] = (
+        [d.model_dump() for d in nov_signed.dispositions]
+        if nov_signed is not None else [])
     return out
 
 

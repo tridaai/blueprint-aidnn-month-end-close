@@ -29,7 +29,7 @@
   },
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "f1aecc975673dee4362ef1f9834af9e55bbf51bde8e1b6b9ccdc5fb9a3cfc6c7",
+  "evidence_sha256": "36a43c937063fce5771bc87a0e4141bebc065469d4ee5b62184ae3dde47f4e6b",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -82,7 +82,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "95a64343053a62611a2a5e5cc2782daec49e5c6cb95590d9bbe9a2f84e64372e",
+  "october_evidence_sha256": "f16fd6a99e379dbff6ef44a6e6fc613fc8e3ecd7b88eb585aced814b6326bf8c",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -112,6 +112,122 @@
     "consolidated_revenue",
     "eliminations_total",
     "revenue_vs_plan"
+  ],
+  "dispositioned_variances": [
+    "UNMATCHED_IC_LEG",
+    "IC_DISAGREEMENT"
+  ],
+  "signed_dispositions": [
+    {
+      "disposition_id": "DISP-PACK-RUN-2026-10-1-1",
+      "pack_id": "PACK-RUN-2026-10-1",
+      "run_id": "RUN-2026-10",
+      "period": "2026-10",
+      "code": "IC_DISAGREEMENT",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales:HLD->HLE",
+      "detail": "intercompany pair HLD \u2192 HLE (elimination 'ic_sales') disagrees: HLD books intercompany revenue of 61600.00 USD on account 4200, but HLE books the matching cost as 54500.00 EUR on account 5000 \u2014 61040.00 USD on the close's rate basis \u2014 a difference of 560.00 USD. The two entities' books do not mirror, so the elimination would net a fiction; the fix is a booking conversation between HLD and HLE, not an adjustment in the engine, and neither entity's own figures are restated by this check",
+      "decision": "ACCEPTED_CARRY",
+      "actor": "Eval Controller",
+      "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
+      "at": "2026-10-11T22:51:45.480872+00:00",
+      "supersedes": null,
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "carry_number": 1
+    },
+    {
+      "disposition_id": "DISP-PACK-RUN-2026-10-1-2",
+      "pack_id": "PACK-RUN-2026-10-1",
+      "run_id": "RUN-2026-10",
+      "period": "2026-10",
+      "code": "UNMATCHED_IC_LEG",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales",
+      "detail": "elimination 'ic_sales': intercompany legs do not pair \u2014 revenue legs total 61600.00 USD after conversion, cost legs total 61040.00; 560.00 has no counterpart leg, so it cannot eliminate",
+      "decision": "ACCEPTED_CARRY",
+      "actor": "Eval Controller",
+      "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
+      "at": "2026-10-11T22:51:45.486789+00:00",
+      "supersedes": null,
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "carry_number": 1
+    }
+  ],
+  "november_opening_items": [
+    {
+      "code": "IC_DISAGREEMENT",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales:HLD->HLE",
+      "detail": "intercompany pair HLD \u2192 HLE (elimination 'ic_sales') disagrees: HLD books intercompany revenue of 61600.00 USD on account 4200, but HLE books the matching cost as 54500.00 EUR on account 5000 \u2014 61040.00 USD on the close's rate basis \u2014 a difference of 560.00 USD. The two entities' books do not mirror, so the elimination would net a fiction; the fix is a booking conversation between HLD and HLE, not an adjustment in the engine, and neither entity's own figures are restated by this check",
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "disposition_id": "DISP-PACK-RUN-2026-10-1-1",
+      "dispositioned_by": "Eval Controller",
+      "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
+      "carry_number": 1,
+      "retest": "STILL_PRESENT",
+      "current_detail": "intercompany pair HLD \u2192 HLE (elimination 'ic_sales') disagrees: HLD books intercompany revenue of 61600.00 USD on account 4200, but HLE books the matching cost as 54500.00 EUR on account 5000 \u2014 61040.00 USD on the close's rate basis \u2014 a difference of 560.00 USD. The two entities' books do not mirror, so the elimination would net a fiction; the fix is a booking conversation between HLD and HLE, not an adjustment in the engine, and neither entity's own figures are restated by this check"
+    },
+    {
+      "code": "UNMATCHED_IC_LEG",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales",
+      "detail": "elimination 'ic_sales': intercompany legs do not pair \u2014 revenue legs total 61600.00 USD after conversion, cost legs total 61040.00; 560.00 has no counterpart leg, so it cannot eliminate",
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "disposition_id": "DISP-PACK-RUN-2026-10-1-2",
+      "dispositioned_by": "Eval Controller",
+      "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
+      "carry_number": 1,
+      "retest": "STILL_PRESENT",
+      "current_detail": "elimination 'ic_sales': intercompany legs do not pair \u2014 revenue legs total 61600.00 USD after conversion, cost legs total 61040.00; 560.00 has no counterpart leg, so it cannot eliminate"
+    }
+  ],
+  "november_second_carry": [
+    {
+      "disposition_id": "DISP-PACK-RUN-2026-11-1-1",
+      "pack_id": "PACK-RUN-2026-11-1",
+      "run_id": "RUN-2026-11",
+      "period": "2026-11",
+      "code": "IC_DISAGREEMENT",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales:HLD->HLE",
+      "detail": "intercompany pair HLD \u2192 HLE (elimination 'ic_sales') disagrees: HLD books intercompany revenue of 61600.00 USD on account 4200, but HLE books the matching cost as 54500.00 EUR on account 5000 \u2014 61040.00 USD on the close's rate basis \u2014 a difference of 560.00 USD. The two entities' books do not mirror, so the elimination would net a fiction; the fix is a booking conversation between HLD and HLE, not an adjustment in the engine, and neither entity's own figures are restated by this check",
+      "decision": "ACCEPTED_CARRY",
+      "actor": "Eval Controller",
+      "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
+      "at": "2026-10-11T22:51:45.523672+00:00",
+      "supersedes": null,
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "carry_number": 2
+    },
+    {
+      "disposition_id": "DISP-PACK-RUN-2026-11-1-2",
+      "pack_id": "PACK-RUN-2026-11-1",
+      "run_id": "RUN-2026-11",
+      "period": "2026-11",
+      "code": "UNMATCHED_IC_LEG",
+      "entity_id": null,
+      "metric_id": null,
+      "subject": "ic_sales",
+      "detail": "elimination 'ic_sales': intercompany legs do not pair \u2014 revenue legs total 61600.00 USD after conversion, cost legs total 61040.00; 560.00 has no counterpart leg, so it cannot eliminate",
+      "decision": "ACCEPTED_CARRY",
+      "actor": "Eval Controller",
+      "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
+      "at": "2026-10-11T22:51:45.523748+00:00",
+      "supersedes": null,
+      "origin_period": "2026-10",
+      "origin_pack_id": "PACK-RUN-2026-10-1",
+      "carry_number": 2
+    }
   ],
   "ic_signed_pair": {
     "elimination_id": "ic_sales",
@@ -167,7 +283,15 @@
     "ic pair record equals the planted gold": true,
     "ic flags mark exactly the consolidated figures on the pair": true,
     "edited rate table named, figures reproduce at the stamp": true,
-    "figure converted off-stamp named per figure": true
+    "figure converted off-stamp named per figure": true,
+    "disposition requires a named controller and a reason": true,
+    "a non-blocking flag cannot be dispositioned": true,
+    "one undispositioned blocker still refuses sign-off": true,
+    "all dispositioned: the pack presents and signs": true,
+    "the verifier's verdict is unchanged by disposition": true,
+    "dispositions on the signed face and in the bundle": true,
+    "carried item opens next period, retested still present": true,
+    "second carry counted on the face": true
   },
   "gate_passed": true
 }
