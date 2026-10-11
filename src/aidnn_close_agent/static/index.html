@@ -200,7 +200,7 @@ function packHtml(pack) {
   html += `<dl class="kv">
     <dt>Definition pack</dt><dd>${pack.definition_pack_id} v${pack.definition_pack_version}</dd>
     <dt>Mart version</dt><dd>${pack.mart_version}</dd>
-    <dt>FX table version</dt><dd>v${pack.source_versions.fx_version}</dd>
+    <dt>FX table (stamped)</dt><dd>${pack.source_versions.fx_table ? "v" + pack.source_versions.fx_table.version + " · " + Object.entries(pack.source_versions.fx_table.rates).map(([c, r]) => c + " " + r).join(", ") : "v" + pack.source_versions.fx_version + " — rates not stamped (pack predates rate stamping)"}</dd>
     <dt>Source batches</dt><dd>${Object.entries(pack.source_versions.batches).map(([b, v]) => b + " (v" + v + ")").join(", ")}</dd></dl>`;
   (pack.variances || []).forEach(v => html += `<p class="flag">✗ ${v.code} — ${v.detail}</p>`);
   html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th></tr></thead><tbody>`
@@ -287,7 +287,7 @@ function comparativesHtml(pack) {
       <table><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">This period</th><th style="text-align:right;">Prior (signed)</th><th style="text-align:right;">Change</th><th>Flags</th></tr></thead><tbody>`
       + comps.map(c => {
           const cur = byKey[c.metric_id + "|" + (c.entity_id || "")];
-          const flags = [c.definition_changed ? "definition changed" : "", c.restated ? "restated" : ""].filter(Boolean).join(" · ");
+          const flags = [c.definition_changed ? "definition changed" : "", c.rate_changed ? "rate changed" : "", c.restated ? "restated" : ""].filter(Boolean).join(" · ");
           return `<tr><td>${cur ? cur.label : c.metric_id}</td><td>${c.entity_id || "consolidated"}</td>
             <td class="num">${cur ? cur.currency + " " + money(cur.value) : "—"}</td>
             <td class="num">${c.prior_currency} ${money(c.prior_value)}</td>
@@ -304,9 +304,9 @@ function fluxHtml(pack) {
   if (!flux) return "";
   const fmt = (cur, v) => (Number(v) >= 0 ? "+" : "") + cur + " " + money(v);
   let html = `<h2 style="margin-top:16px;">Flux — why it moved</h2>
-    <p class="note">Every movement decomposed by entity and by account; each decomposition foots to the movement exactly. Materiality: |movement| ≥ ${money(flux.threshold_abs)} or |change| ≥ ${money(flux.threshold_pct)}% — material movements carry their drivers, largest first. Each side computed under its own period's definitions (prior v${flux.prior_definition_pack_version} → current v${flux.current_definition_pack_version}).</p>`;
+    <p class="note">Every movement decomposed by entity and by account; each decomposition foots to the movement exactly. Materiality: |movement| ≥ ${money(flux.threshold_abs)} or |change| ≥ ${money(flux.threshold_pct)}% — material movements carry their drivers, largest first. Each side computed under its own period's definitions (prior v${flux.prior_definition_pack_version} → current v${flux.current_definition_pack_version}) and converted at its own period's stamped rate table${flux.prior_fx_version !== null && flux.current_fx_version !== null ? " (prior v" + flux.prior_fx_version + " → current v" + flux.current_fx_version + ")" : ""}.</p>`;
   flux.entries.forEach(e => {
-    const flags = [e.material ? "MATERIAL" : "", e.definition_changed ? "definition changed" : "", e.restated ? "restated" : ""].filter(Boolean).join(" · ");
+    const flags = [e.material ? "MATERIAL" : "", e.definition_changed ? "definition changed" : "", e.rate_changed ? "rate changed" : "", e.restated ? "restated" : ""].filter(Boolean).join(" · ");
     const pct = e.movement_pct === null ? "" : " (" + (Number(e.movement_pct) >= 0 ? "+" : "") + money(e.movement_pct) + "%)";
     html += `<p style="margin-top:10px;"><strong>${e.metric_id}</strong> · ${e.entity_id || "consolidated"} · moved ${fmt(e.currency, e.movement)}${pct}${flags ? " · " + flags : ""}</p>`;
     if (e.material) {

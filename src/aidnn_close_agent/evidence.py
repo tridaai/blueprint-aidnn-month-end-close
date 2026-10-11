@@ -64,6 +64,16 @@ intercompany legs to pair) projects ``intercompany: null``.
 Since a disagreement blocks sign-off, a signed pack's section
 shows agreed pairs; the disagreements live on the blocked
 packs that never earn a bundle, named in their variances.
+
+Rate provenance (round 6) joins as ``fx``: the rate table this
+pack stamps — the table itself, not only its version — the
+table the cited prior pack stamps, and the rates that differ
+between them, so an auditor re-performing a comparative can
+see the basis it was converted on and where that basis moved.
+A pack stamped before tables rode the stamp projects
+``fx.current: null``: the bundle says the rates are not on
+record rather than reconstructing them from batches the close
+may not have used.
 """
 
 from __future__ import annotations
@@ -78,6 +88,7 @@ from .definitions import (
     load_definition_pack_version,
 )
 from .errors import EvidenceError
+from .fx import changed_currencies
 from .schemas import BoardPack
 
 BUNDLE_FORMAT = "aidnn-close-evidence/v1"
@@ -231,6 +242,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         )
 
     comparatives: list[dict] = []
+    cited_packs: dict[str, BoardPack] = {}
     for comparative in sorted(
         pack.comparatives, key=lambda c: (c.metric_id, c.entity_id or "")
     ):
@@ -241,7 +253,32 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
                 f"pack {comparative.prior_pack_id}, which does not "
                 "stand in the store as a signed pack"
             )
+        cited_packs[cited.pack_id] = cited
         comparatives.append(comparative.model_dump())
+
+    # Rate provenance: this pack's stamped table, the cited
+    # prior pack's stamped table, and the rates that moved
+    # between them — projected from the records, like everything
+    # else here. A missing stamp projects as null, never as a
+    # table reconstructed from the batches in the store.
+    current_table = pack.source_versions.fx_table
+    prior_table = None
+    if pack.comparatives:
+        cited_prior = cited_packs.get(pack.comparatives[0].prior_pack_id)
+        if cited_prior is not None:
+            prior_table = cited_prior.source_versions.fx_table
+    fx_section = {
+        "current": current_table.model_dump()
+        if current_table is not None else None,
+        "prior": prior_table.model_dump()
+        if prior_table is not None else None,
+        "rate_changes": [
+            {"currency": currency, "prior_rate": before,
+             "current_rate": after}
+            for currency, (before, after)
+            in changed_currencies(prior_table, current_table).items()
+        ],
+    }
 
     if pack.restatement is not None \
             and pack.restatement_acknowledgement is None:
@@ -276,7 +313,10 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         },
         "figures": figures,
         "source_manifest": manifest,
-        "fx_version": pack.source_versions.fx_version,
+        "fx_version": current_table.version
+        if current_table is not None
+        else pack.source_versions.fx_version,
+        "fx": fx_section,
         "comparatives": comparatives,
         "flux": pack.flux.model_dump() if pack.flux is not None else None,
         "intercompany": [p.model_dump() for p in pack.ic_pairs]
@@ -386,6 +426,33 @@ def render_text(document: dict) -> str:
             + (f" · phase {batch['phase']}"
                if batch["phase"] != "initial" else "")
         )
+    fx = document.get("fx") or {}
+    lines.append("")
+    lines.append("RATE PROVENANCE — the rate tables the closes "
+                 "converted on, as stamped on their packs:")
+
+    def _table_line(label: str, table) -> str:
+        if table is None:
+            return (f"  {label}: no rate table on the stamp — the "
+                    "pack predates rate stamping, and its rates "
+                    "are not reconstructed here")
+        rates = ", ".join(
+            f"{currency} {table['rates'][currency]}"
+            for currency in sorted(table["rates"])
+        ) or "no foreign rates"
+        return f"  {label}: rate table v{table['version']} ({rates})"
+
+    lines.append(_table_line("this pack", fx.get("current")))
+    if document["comparatives"]:
+        lines.append(_table_line("prior pack", fx.get("prior")))
+    for change in fx.get("rate_changes") or []:
+        lines.append(
+            f"  RATE CHANGED: {change['currency']}: "
+            f"{change['prior_rate'] or 'absent'} (prior) → "
+            f"{change['current_rate'] or 'absent'} (current) — "
+            "consolidated comparatives converting this currency "
+            "are flagged rate changed, not decomposed"
+        )
     if document["comparatives"]:
         lines.append("")
         lines.append(f"COMPARATIVES ({len(document['comparatives'])}) "
@@ -395,6 +462,8 @@ def render_text(document: dict) -> str:
             flags = []
             if comparative["definition_changed"]:
                 flags.append("definition changed")
+            if comparative.get("rate_changed"):
+                flags.append("rate changed")
             if comparative["restated"]:
                 flags.append("restated")
             change = comparative["change"]
@@ -413,6 +482,12 @@ def render_text(document: dict) -> str:
     flux = document.get("flux")
     if flux is not None:
         lines.append("")
+        fx_text = ""
+        if flux.get("prior_fx_version") is not None \
+                and flux.get("current_fx_version") is not None:
+            fx_text = (f"; rate tables: prior "
+                       f"v{flux['prior_fx_version']} → current "
+                       f"v{flux['current_fx_version']}")
         lines.append(
             f"FLUX SCHEDULE — every movement decomposed; materiality "
             f"bars: |movement| ≥ {flux['threshold_abs']} or "
@@ -420,7 +495,7 @@ def render_text(document: dict) -> str:
             f"{flux['prior_period']}, signed pack "
             f"{flux['prior_pack_id']}; definitions: prior "
             f"v{flux['prior_definition_pack_version']} → current "
-            f"v{flux['current_definition_pack_version']}):"
+            f"v{flux['current_definition_pack_version']}{fx_text}):"
         )
         for entry in flux["entries"]:
             scope = entry["entity_id"] or "consolidated"
@@ -431,6 +506,8 @@ def render_text(document: dict) -> str:
                 flags.append("MATERIAL")
             if entry["definition_changed"]:
                 flags.append("definition changed")
+            if entry.get("rate_changed"):
+                flags.append("rate changed")
             if entry["restated"]:
                 flags.append("restated")
             lines.append(
