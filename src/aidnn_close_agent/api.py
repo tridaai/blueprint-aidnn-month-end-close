@@ -47,6 +47,15 @@ class SignOffRequest(BaseModel):
     reason: str = ""
 
 
+class ReceiveSourceRequest(BaseModel):
+    batch_id: str
+
+
+class AcknowledgeRequest(BaseModel):
+    actor: str
+    note: str
+
+
 def create_app(service: CloseService | None = None) -> FastAPI:
     load_dotenv()
     configure_json_logging()
@@ -192,6 +201,25 @@ def create_app(service: CloseService | None = None) -> FastAPI:
     def sign_off(pack_id: str, request: SignOffRequest) -> dict:
         pack = svc().sign_off(pack_id, request.decision, request.actor,
                               request.reason)
+        return pack.model_dump()
+
+    @app.post("/sources/receive")
+    def receive_source(request: ReceiveSourceRequest) -> dict:
+        """Take delivery of a restated extract for a period whose
+        pack is already signed. It attaches to no run; the next
+        period's comparative layer picks it up by supersession."""
+        batch = svc().receive_restatement(request.batch_id)
+        return {
+            "batch_id": batch.batch_id, "kind": batch.kind,
+            "entity_id": batch.entity_id, "version": batch.version,
+            "supersedes": batch.supersedes, "phase": batch.phase,
+        }
+
+    @app.post("/packs/{pack_id}/acknowledge-restatement")
+    def acknowledge_restatement(pack_id: str,
+                                request: AcknowledgeRequest) -> dict:
+        pack = svc().acknowledge_restatement(pack_id, request.actor,
+                                             request.note)
         return pack.model_dump()
 
     return app

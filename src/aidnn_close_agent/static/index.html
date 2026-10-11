@@ -97,7 +97,11 @@
     independent code path. A figure that cannot be reproduced blocks the pack, with the
     variance named — a duplicated journal, an unmatched intercompany leg, a subledger
     tie-out gap. A pack built from superseded extracts goes stale by its version stamps
-    and cannot be signed. Only a fully verified pack reaches the controller.</p>
+    and cannot be signed. Only a fully verified pack reaches the controller.
+    From the second month on, each pack also carries comparatives cited from the prior
+    period's <em>signed</em> pack — and if that period's sources were restated after
+    sign-off, the restatement is named on the pack and the signature is held until a
+    controller acknowledges it.</p>
   </section>
   <section>
     <h2>Board pack</h2>
@@ -161,6 +165,8 @@ async function showRun(runId, runs) {
   $("detail").innerHTML = html;
   document.querySelectorAll("[data-sign]").forEach(btn =>
     btn.addEventListener("click", () => decide(btn.dataset.sign, btn.dataset.pack)));
+  document.querySelectorAll("[data-ack]").forEach(btn =>
+    btn.addEventListener("click", () => ackRestatement(btn.dataset.ack)));
 }
 
 function packHtml(pack) {
@@ -176,6 +182,7 @@ function packHtml(pack) {
       <td class="num">${f.currency} ${money(f.value)}</td>
       <td class="status st-${f.status}">${f.status}</td></tr>`).join("")
     + `</tbody></table>`;
+  html += comparativesHtml(pack);
   if (pack.narrative)
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
   if (pack.decision)
@@ -189,6 +196,69 @@ function packHtml(pack) {
       <p class="note" id="gate-error-${pack.pack_id}"></p>`;
   }
   return html;
+}
+
+function comparativesHtml(pack) {
+  const comps = pack.comparatives || [];
+  if (!comps.length && !pack.restatement) return "";
+  const byKey = {};
+  pack.figures.forEach(f => byKey[f.metric_id + "|" + (f.entity_id || "")] = f);
+  let html = "";
+  if (pack.restatement) {
+    const r = pack.restatement;
+    html += `<h2 style="margin-top:16px;">Restated prior period — ${r.prior_period}</h2>
+      <p class="flag">Sources behind signed pack ${r.prior_pack_id} were restated after sign-off
+      (${r.restated_batch_ids.join(", ")}). The signed pack stands; these figures no longer reproduce:</p>
+      <table><thead><tr><th>Figure</th><th style="text-align:right;">Signed</th><th style="text-align:right;">Restated sources</th></tr></thead><tbody>`
+      + r.affected_figures.map(a => `<tr><td>${a.metric_id}${a.entity_id ? " · " + a.entity_id : ""}</td>
+          <td class="num">${a.currency} ${money(a.signed_value)}</td>
+          <td class="num">${a.currency} ${money(a.recomputed_value)}</td></tr>`).join("")
+      + `</tbody></table>`;
+    if (pack.restatement_acknowledgement) {
+      const ack = pack.restatement_acknowledgement;
+      html += `<p class="note" style="margin-top:8px;">Acknowledged by ${ack.actor} — ${ack.note}</p>`;
+    } else if (pack.status === "AWAITING_CONTROLLER") {
+      html += `<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <input id="ack-actor-${pack.pack_id}" placeholder="Controller name (required)">
+        <input id="ack-note-${pack.pack_id}" placeholder="Acknowledgement note (required)" style="flex:1; min-width:220px;">
+        <button class="secondary" data-ack="${pack.pack_id}">Acknowledge restatement</button></div>
+        <p class="note">Sign-off is refused until the restatement is acknowledged.</p>
+        <p class="note" id="ack-error-${pack.pack_id}"></p>`;
+    }
+  }
+  if (comps.length) {
+    const cite = comps[0];
+    html += `<h2 style="margin-top:16px;">Comparatives — prior period, as signed</h2>
+      <p class="note">Prior figures cite signed pack ${cite.prior_pack_id} (definition pack v${cite.prior_definition_pack_version}) exactly — never a recompute over prior sources.</p>
+      <table><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">This period</th><th style="text-align:right;">Prior (signed)</th><th style="text-align:right;">Change</th><th>Flags</th></tr></thead><tbody>`
+      + comps.map(c => {
+          const cur = byKey[c.metric_id + "|" + (c.entity_id || "")];
+          const flags = [c.definition_changed ? "definition changed" : "", c.restated ? "restated" : ""].filter(Boolean).join(" · ");
+          return `<tr><td>${cur ? cur.label : c.metric_id}</td><td>${c.entity_id || "consolidated"}</td>
+            <td class="num">${cur ? cur.currency + " " + money(cur.value) : "—"}</td>
+            <td class="num">${c.prior_currency} ${money(c.prior_value)}</td>
+            <td class="num">${c.change === null ? "—" : (Number(c.change) >= 0 ? "+" : "") + money(c.change) + (c.change_pct === null ? "" : " (" + (Number(c.change_pct) >= 0 ? "+" : "") + money(c.change_pct) + "%)")}</td>
+            <td class="flag">${flags}</td></tr>`;
+        }).join("")
+      + `</tbody></table>`;
+  }
+  return html;
+}
+
+async function ackRestatement(packId) {
+  try {
+    await api(`/packs/${packId}/acknowledge-restatement`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({actor: $("ack-actor-" + packId).value, note: $("ack-note-" + packId).value}),
+    });
+    await loadRuns();
+    const runs = await api("/runs");
+    const run = runs.find(r => r.pack_ids.includes(packId));
+    if (run) await showRun(run.run_id, runs);
+  } catch (e) {
+    const slot = $("ack-error-" + packId);
+    if (slot) slot.textContent = e.message;
+  }
 }
 
 async function decide(decision, packId) {

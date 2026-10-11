@@ -52,6 +52,16 @@ def main(argv: list[str] | None = None) -> int:
     p_sign.add_argument("decision", choices=["sign", "return"])
     p_sign.add_argument("--actor", required=True)
     p_sign.add_argument("--reason", default="")
+    p_receive = sub.add_parser(
+        "receive-restatement",
+        help="take delivery of a restated extract for a signed period")
+    p_receive.add_argument("batch_id")
+    p_ack = sub.add_parser(
+        "acknowledge-restatement",
+        help="record a controller's acknowledgement of a pack's restatement")
+    p_ack.add_argument("pack_id")
+    p_ack.add_argument("--actor", required=True)
+    p_ack.add_argument("--note", required=True)
     sub.add_parser("runs", help="list all close runs as JSON")
     args = parser.parse_args(argv)
 
@@ -68,6 +78,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "sign-off":
             pack = service.sign_off(args.pack_id, args.decision, args.actor,
                                     args.reason)
+            print(pack.model_dump_json(indent=2))
+        elif args.command == "receive-restatement":
+            batch = service.receive_restatement(args.batch_id)
+            print(batch.model_dump_json(indent=2))
+        elif args.command == "acknowledge-restatement":
+            pack = service.acknowledge_restatement(args.pack_id, args.actor,
+                                                   args.note)
             print(pack.model_dump_json(indent=2))
         elif args.command == "runs":
             print(json.dumps([r.model_dump() for r in service.list_runs()],

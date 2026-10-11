@@ -1,4 +1,5 @@
-"""The traced demo: Harborlight's September close, both attempts.
+"""The traced demo: Harborlight's September close, both attempts
+— then October, the comparative month.
 
 Attempt one runs on the extracts as they first arrive — and the
 verifier stops it cold: a duplicated journal, an intercompany
@@ -8,6 +9,15 @@ late, the first pack goes stale by its stamps, and the rebuilt
 pack verifies figure for figure against source — where a named
 controller signs it. Nothing posts anywhere; the signed pack is
 the end of the line.
+
+The second act is October. September's HLG extract is restated
+after sign-off (a payroll accrual was understated); October
+closes under definition pack v1.1.0, which widened operating
+expenses. October's pack presents every figure against
+September's *signed* figures, flags the comparisons that cross
+the definition change, detects the restatement by name — and
+its signature is held until the controller acknowledges the
+restatement on the record.
 """
 
 from __future__ import annotations
@@ -16,9 +26,16 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from .config import definition_pack_path
 from .connectors import DatasetConnector
-from .datasets import PERIOD, build_world
-from .definitions import load_definition_pack
+from .datasets import (
+    PERIOD,
+    PERIOD_OCTOBER,
+    RESTATEMENT_BATCH_ID,
+    build_october_world,
+    build_world,
+)
+from .definitions import load_definition_pack, load_definition_pack_version
 from .engine_offline import OfflineFinanceEngine
+from .errors import GateError
 from .graph import PackPipeline
 from .object_store import InMemoryObjectStore
 from .service import CloseService
@@ -84,7 +101,90 @@ def run_demo() -> CloseService:
                                "figures verified; variances cleared")
     print(f"\n{signed.pack_id} → {signed.status} by {CONTROLLER}.")
     print("Nothing was posted to any ledger. The signed pack is the record.")
+
+    _run_october(service)
     return service
+
+
+def _run_october(september_service: CloseService) -> None:
+    """Act two, over the same store: the restatement lands, the
+    definition pack is upgraded, and October closes comparative."""
+    store = september_service.store
+    print("\n" + "=" * 72)
+    print("October: the comparative month")
+    batch = september_service.receive_restatement(RESTATEMENT_BATCH_ID)
+    print(f"\nA corrected September extract lands after sign-off: "
+          f"{batch.batch_id} supersedes {batch.supersedes}. The signed "
+          "September pack is not touched — history is not edited.")
+
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    assert pack_v110 is not None
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    service = CloseService(
+        pipeline=pipeline, store=store,
+        connector=september_service.connector,
+        objects=september_service.objects, pack_def=pack_v110,
+    )
+    print(f"The deployment upgrades the definition pack to v{pack_v110.version} "
+          "(operating expenses now include insurance, account 6400).")
+
+    world = build_october_world()
+    run = service.create_run(PERIOD_OCTOBER)
+    service.ingest(run.run_id, [b.batch_id for b in world.batches])
+    pack = service.build_pack(run.run_id)
+    _print_pack(pack, "October attempt")
+
+    print(f"\nComparatives — every figure against September's signed pack "
+          f"({pack.comparatives[0].prior_pack_id if pack.comparatives else '—'}):")
+    current = {(f.metric_id, f.entity_id): f for f in pack.figures}
+    for comp in pack.comparatives:
+        figure = current[(comp.metric_id, comp.entity_id)]
+        flags = []
+        if comp.definition_changed:
+            flags.append("DEFINITION CHANGED")
+        if comp.restated:
+            flags.append("RESTATED PRIOR")
+        scope = comp.entity_id or "consolidated"
+        if comp.change is None:
+            change = "—"
+        elif comp.change_pct is None:
+            change = comp.change  # prior was zero; a % would mislead
+        else:
+            change = f"{comp.change} ({comp.change_pct}%)"
+        print(f"  {comp.metric_id:<32} {scope:<12} "
+              f"{figure.currency} {figure.value:>12} vs signed "
+              f"{comp.prior_value:>12}  Δ {change:<22} "
+              f"{' · '.join(flags)}")
+
+    if pack.restatement is not None:
+        print("\nThe restatement, as the pack names it:")
+        for affected in pack.restatement.affected_figures:
+            scope = affected.entity_id or "consolidated"
+            print(f"  ✗ {affected.metric_id:<32} {scope:<12} signed "
+                  f"{affected.signed_value:>12} → restated sources "
+                  f"produce {affected.recomputed_value:>12}")
+    try:
+        service.sign_off(pack.pack_id, "sign", CONTROLLER)
+        print("\nUNEXPECTED: the pack signed over an unacknowledged "
+              "restatement.")
+    except GateError as exc:
+        print(f"\nSign-off refused: {exc}")
+    acked = service.acknowledge_restatement(
+        pack.pack_id, CONTROLLER,
+        "Reviewed the HLG payroll restatement with FP&A; September's "
+        "comparatives stand as signed, the restated figures are noted "
+        "for the audit file.",
+    )
+    print(f"Restatement acknowledged by {CONTROLLER} — the variance "
+          "stays on the pack record.")
+    signed = service.sign_off(acked.pack_id, "sign", CONTROLLER,
+                              "comparatives tie to the signed September "
+                              "pack; restatement acknowledged")
+    print(f"{signed.pack_id} → {signed.status}. September's signed pack "
+          "is byte-for-byte the record it was.")
 
 
 def main() -> None:
