@@ -19,8 +19,12 @@ the way a real first deployment gets exercised:
 - **An unmatched intercompany leg** — HLD books a $55,000 IC
   sale to HLE; HLE's first extract has no corresponding cost
   leg. The elimination cannot pair, the verifier names it
-  ``UNMATCHED_IC_LEG``, and HLE's corrected extract (v2) posts
-  the leg (€50,000 — exactly $55,000 at the revised rate).
+  ``UNMATCHED_IC_LEG`` in aggregate — and, pairing the legs by
+  counterparty, names the pair itself one-sided
+  (``IC_ONE_SIDED``): one entity recorded the trade, the other
+  never did. HLE's corrected extract (v2) posts the leg
+  (€50,000 — exactly $55,000 at the revised rate), and the pair
+  agrees.
 - **A mis-posted revenue entry** — HLE's first extract posts a
   €95,000 services billing to payroll instead of revenue. The
   figures still foot to the (wrong) source, so arithmetic alone
@@ -276,7 +280,8 @@ def build_world() -> World:
         batches=batches,
         gold_figures=gold,
         phase_a_variance_codes=[
-            "DUPLICATE_JOURNAL", "SUBLEDGER_TIE_OUT", "UNMATCHED_IC_LEG",
+            "DUPLICATE_JOURNAL", "IC_ONE_SIDED", "SUBLEDGER_TIE_OUT",
+            "UNMATCHED_IC_LEG",
         ],
     )
 

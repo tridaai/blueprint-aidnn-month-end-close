@@ -11,6 +11,11 @@ The engine proposes; this module disposes. It is deliberately a
 - its data-quality scan is its own: duplicate journal ids, sub-
   ledger tie-outs, and intercompany leg pairing are checked here
   from raw records, not inherited from the mart builder's flags.
+  The pairing runs at two grains: the aggregate (do the legs
+  net at all) and the pair (which seller and buyer, keyed by
+  counterparty, stated figure against stated figure — the check
+  that names a disagreement, and tells a one-sided booking
+  apart from a pair that merely disagrees on the amount).
 
 A figure the verifier cannot reproduce blocks the pack — a named
 variance, never a silent pass. And honesty about limits: figures
@@ -41,6 +46,7 @@ from .schemas import (
     Figure,
     FigureComparative,
     FluxSchedule,
+    ICPair,
     SourceBatch,
     Variance,
 )
@@ -59,6 +65,7 @@ class FigureCheck:
 class VerificationReport:
     checks: list[FigureCheck] = field(default_factory=list)
     variances: list[Variance] = field(default_factory=list)
+    ic_pairs: list[ICPair] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -144,6 +151,237 @@ def _legs(lines_by_entity: dict[str, list[_RawLine]], account: str,
     return per_entity
 
 
+# -- the intercompany agreement check --------------------------------
+#
+# The elimination block below asks an aggregate question — do
+# the converted revenue legs and cost legs total the same? —
+# and pools every entity's legs together to ask it. Pooling has
+# a blind spot: it cannot tell *which* pair of entities disagrees,
+# it reads a one-sided booking and an amount disagreement as the
+# same gap, and two errors that offset (one pair over, another
+# under, a leg flagged to the wrong counterparty) cancel inside
+# the totals and pair silently. Consolidation eliminates pair by
+# pair, so the check that guards it has to pair by pair too.
+#
+# The pairing key is the data model's own: for an elimination
+# definition (revenue account, cost account), a pair is one
+# seller and one buyer. The seller's leg is its IC-flagged credit
+# lines on the revenue account flagged to the buyer; the buyer's
+# leg is its IC-flagged debit lines on the cost account flagged
+# to the seller. Legs flagged to a counterparty outside the
+# pack's entities cannot be keyed and are left to the aggregate
+# check, which pools them as before.
+#
+# The comparison basis: the two sides book in their own entity
+# currencies, and the journals state no third transaction
+# amount, so the pair is judged in the seller's currency — the
+# currency the trade was invoiced in. The buyer's stated amount
+# is translated once, at the run's rate table: the same single
+# table every figure in the close converts with, so both sides
+# are judged on the close's own stated basis and the difference
+# is exact to the cent at that basis. What is never compared is
+# two converted consolidated totals — the elimination's matched
+# amount is an output of pairing, not an input to judging it.
+
+
+def _pair_legs(lines_by_entity: dict[str, list[_RawLine]], account: str,
+               side: str) -> dict[tuple[str, str], Decimal]:
+    """Leg totals keyed (booking entity, counterparty): the
+    account's IC-flagged lines, credit side for a revenue
+    account, debit side for a cost account — the same leg
+    definition the aggregate check sums, kept per pair."""
+    per_pair: dict[tuple[str, str], Decimal] = {}
+    for entity_id, lines in lines_by_entity.items():
+        for line in lines:
+            if line.account == account and line.ic_counterparty:
+                amount = line.credit if side == "credit" else line.debit
+                key = (entity_id, line.ic_counterparty)
+                per_pair[key] = per_pair.get(key, ZERO) + amount
+    return per_pair
+
+
+def _to_basis(amount: Decimal, from_currency: str, basis_currency: str,
+              rates: RateTable) -> tuple[Decimal, str | None]:
+    """Express a stated amount in the pair's basis currency.
+
+    Same currency: the amount as stated, no factor. Otherwise
+    one translation at the run's rate table — from the stated
+    currency into the reporting currency and on into the basis
+    at the table's own rates, rounded once, half-up, by the
+    package's one conversion rule. Returns (amount, factor)
+    where the factor is the buyer→basis rate applied, kept for
+    the record."""
+    if from_currency == basis_currency:
+        return q(amount), None
+    factor = rates.rate(from_currency) / rates.rate(basis_currency)
+    factor_text = format(
+        factor.quantize(Decimal("0.0000000001")).normalize(), "f")
+    return q(amount * factor), factor_text
+
+
+def _ic_pairs(pack: DefinitionPack,
+              lines_by_entity: dict[str, list[_RawLine]],
+              rates: RateTable,
+              currencies: dict[str, str],
+              ) -> tuple[list[ICPair], list[Variance]]:
+    """Pair every intercompany leg against its counterparty's
+    mirror leg and judge agreement, per elimination definition."""
+    pairs: list[ICPair] = []
+    variances: list[Variance] = []
+    for elim in pack.eliminations:
+        revenue_legs = _pair_legs(lines_by_entity, elim.revenue_account,
+                                  "credit")
+        cost_legs = _pair_legs(lines_by_entity, elim.cost_account, "debit")
+        keys: set[tuple[str, str]] = set()
+        for seller, buyer in revenue_legs:
+            if seller in currencies and buyer in currencies:
+                keys.add((seller, buyer))
+        for buyer, seller in cost_legs:
+            if seller in currencies and buyer in currencies:
+                keys.add((seller, buyer))
+        for seller, buyer in sorted(keys):
+            seller_ccy = currencies[seller]
+            buyer_ccy = currencies[buyer]
+            seller_amount = revenue_legs.get((seller, buyer))
+            buyer_amount = cost_legs.get((buyer, seller))
+            buyer_basis: Decimal | None = None
+            fx_rate: str | None = None
+            if buyer_amount is not None:
+                buyer_basis, fx_rate = _to_basis(
+                    buyer_amount, buyer_ccy, seller_ccy, rates)
+            difference: Decimal | None = None
+            missing_side: str | None = None
+            if seller_amount is not None and buyer_amount is not None:
+                assert buyer_basis is not None
+                difference = q(seller_amount - buyer_basis)
+                verdict = "AGREED" if difference == ZERO \
+                    else "IC_DISAGREEMENT"
+            elif seller_amount is not None:
+                verdict, missing_side = "ONE_SIDED", "cost"
+            else:
+                verdict, missing_side = "ONE_SIDED", "revenue"
+            pair = ICPair(
+                elimination_id=elim.elimination_id,
+                seller_id=seller, buyer_id=buyer,
+                revenue_account=elim.revenue_account,
+                cost_account=elim.cost_account,
+                seller_amount=money(seller_amount)
+                if seller_amount is not None else None,
+                seller_currency=seller_ccy,
+                buyer_amount=money(buyer_amount)
+                if buyer_amount is not None else None,
+                buyer_currency=buyer_ccy,
+                basis_currency=seller_ccy,
+                buyer_amount_basis=money(buyer_basis)
+                if buyer_basis is not None else None,
+                fx_rate=fx_rate,
+                difference=money(difference)
+                if difference is not None else None,
+                verdict=verdict, missing_side=missing_side,
+            )
+            pairs.append(pair)
+            if verdict == "IC_DISAGREEMENT":
+                assert difference is not None and buyer_basis is not None
+                basis_note = (
+                    f" — {money(buyer_basis)} {seller_ccy} on the "
+                    "close's rate basis"
+                    if buyer_ccy != seller_ccy else ""
+                )
+                variances.append(Variance(
+                    code="IC_DISAGREEMENT",
+                    detail=(
+                        f"intercompany pair {seller} → {buyer} "
+                        f"(elimination {elim.elimination_id!r}) disagrees: "
+                        f"{seller} books intercompany revenue of "
+                        f"{money(seller_amount)} {seller_ccy} on account "
+                        f"{elim.revenue_account}, but {buyer} books the "
+                        f"matching cost as {money(buyer_amount)} "
+                        f"{buyer_ccy} on account {elim.cost_account}"
+                        f"{basis_note} — a difference of "
+                        f"{money(abs(difference))} {seller_ccy}. The two "
+                        "entities' books do not mirror, so the elimination "
+                        "would net a fiction; the fix is a booking "
+                        f"conversation between {seller} and {buyer}, not "
+                        "an adjustment in the engine, and neither entity's "
+                        "own figures are restated by this check"
+                    ),
+                ))
+            elif verdict == "ONE_SIDED":
+                if missing_side == "cost":
+                    present = (
+                        f"{seller} books intercompany revenue of "
+                        f"{money(seller_amount)} {seller_ccy} on account "
+                        f"{elim.revenue_account}, flagged to {buyer}"
+                    )
+                    absent = (
+                        f"{buyer} books no matching cost leg on account "
+                        f"{elim.cost_account} flagged to {seller}"
+                    )
+                else:
+                    present = (
+                        f"{buyer} books intercompany cost of "
+                        f"{money(buyer_amount)} {buyer_ccy} on account "
+                        f"{elim.cost_account}, flagged to {seller}"
+                    )
+                    absent = (
+                        f"{seller} books no matching revenue leg on "
+                        f"account {elim.revenue_account} flagged to {buyer}"
+                    )
+                variances.append(Variance(
+                    code="IC_ONE_SIDED",
+                    detail=(
+                        f"intercompany pair {seller} → {buyer} "
+                        f"(elimination {elim.elimination_id!r}) is "
+                        f"one-sided: {present}, but {absent} — there is "
+                        "nothing for the booked leg to eliminate "
+                        "against. One entity recorded the trade and the "
+                        "other never did; the fix is a booking "
+                        f"conversation between {seller} and {buyer}, not "
+                        "an adjustment in the engine, and neither entity's "
+                        "own figures are restated by this check"
+                    ),
+                ))
+    return pairs, variances
+
+
+def ic_flagged_metrics(pack: DefinitionPack,
+                       elimination_ids: set[str]) -> set[str]:
+    """The consolidated metrics whose arithmetic touches the
+    given eliminations' legs: the elimination figures themselves,
+    the consolidation of the base metric the elimination's
+    revenue account feeds, and everything derived from those.
+    These are the figures a pair disagreement puts in doubt —
+    the graph stamps them on the pack. Entity figures are never
+    in the set: they stand as booked."""
+    base_metrics = {
+        m.metric_id for m in pack.metrics
+        if m.derived is None and m.scope == "entity"
+        and any(m_elim.revenue_account in m.accounts
+                for m_elim in pack.eliminations
+                if m_elim.elimination_id in elimination_ids)
+    }
+    flagged: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for metric in pack.metrics:
+            if metric.metric_id in flagged or metric.derived is None:
+                continue
+            derived = metric.derived
+            if derived.op == "elimination" \
+                    and derived.elimination_id in elimination_ids:
+                flagged.add(metric.metric_id)
+                changed = True
+            elif derived.of is not None and (
+                    derived.of in flagged or derived.of in base_metrics):
+                flagged.add(metric.metric_id)
+                changed = True
+            elif any(arg in flagged for arg in derived.args):
+                flagged.add(metric.metric_id)
+                changed = True
+    return flagged
+
+
 def verify(pack: DefinitionPack, batches: list[SourceBatch],
            engine_figures: list[Figure]) -> VerificationReport:
     """Recompute the pack's figures from source and compare.
@@ -187,6 +425,18 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
                     "leg, so it cannot eliminate"
                 ),
             ))
+
+    # --- intercompany agreement: the legs, paired -----------------
+    # The aggregate pairing above says the legs do not net; this
+    # check says which pair, by how much, and in which direction
+    # — seller's stated figure against buyer's stated figure,
+    # keyed by counterparty (see _ic_pairs). Both checks read the
+    # same flattened lines; a disagreement or a one-sided pair
+    # blocks like any other variance.
+    pairs, pair_variances = _ic_pairs(pack, lines_by_entity, rates,
+                                      currencies)
+    report.ic_pairs = pairs
+    variances.extend(pair_variances)
 
     # --- tie-outs: subledger vs GL ----------------------------------
     ar_by_entity = {

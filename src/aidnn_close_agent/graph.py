@@ -108,6 +108,34 @@ class PackPipeline:
             figure.status = "verified" if check and check.ok else "mismatch"
         pack.variances = list(report.variances)
 
+        # The intercompany agreement layer: the verifier's
+        # per-pair verdicts ride the pack, and the consolidated
+        # figures whose arithmetic touches a disputed pair's legs
+        # carry the flag tying them to the open disagreement.
+        # Entity figures are never flagged — they stand as
+        # booked; the disagreement is a consolidation-truth
+        # problem, and it blocks through the pair variances
+        # above, like every other variance.
+        pack.ic_pairs = list(report.ic_pairs)
+        open_elims = {p.elimination_id for p in pack.ic_pairs
+                      if p.verdict != "AGREED"}
+        if open_elims:
+            flagged = verifier_module.ic_flagged_metrics(
+                self.pack_def, open_elims)
+            for figure in pack.figures:
+                if figure.entity_id is None \
+                        and figure.metric_id in flagged:
+                    figure.ic_disagreement = True
+        if pack.ic_pairs:
+            agreed = sum(1 for p in pack.ic_pairs
+                         if p.verdict == "AGREED")
+            pack.audit.append({
+                "event": "ic_pairs_checked", "at": _now(),
+                "detail": f"{len(pack.ic_pairs)} intercompany pair(s) "
+                          f"checked by counterparty: {agreed} agreed, "
+                          f"{len(pack.ic_pairs) - agreed} open",
+            })
+
         # The comparative layer: prior-period figures cited from
         # the prior period's signed pack, checked against that
         # record (never recomputed from its sources). A restated

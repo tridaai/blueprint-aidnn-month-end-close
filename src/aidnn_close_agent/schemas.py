@@ -108,8 +108,56 @@ class Figure(BaseModel):
     value: str  # Decimal as string
     currency: str
     status: FigureStatus = "proposed"
+    # A consolidated figure whose arithmetic touches intercompany
+    # legs an open pair disagreement disputes (see ICPair). The
+    # flag ties the number to the disagreement on the pack; it
+    # never appears on an entity figure — entity packs stand as
+    # booked, disputed or not.
+    ic_disagreement: bool = False
     definition_pack_version: str = ""
     source_versions: SourceVersions = Field(default_factory=SourceVersions)
+
+
+class ICPair(BaseModel):
+    """One intercompany pair, checked for agreement: the revenue
+    leg one entity booked against the cost leg its counterparty
+    booked, for one elimination definition.
+
+    The two sides book in their own entity currencies, so the
+    amounts as *stated* in each entity's books are recorded
+    first, exactly as posted. The comparison runs in the pair's
+    basis currency — the seller's, the currency the trade was
+    invoiced in — with the buyer's stated amount translated
+    once, at the close's own rate table (the single table every
+    figure in the pack converts with), so the verdict is
+    agreement to the cent on the close's stated basis, never a
+    comparison of two converted consolidated totals. ``fx_rate``
+    is that translation factor (buyer currency → basis), kept
+    on the record as provenance; it is ``None`` when the two
+    sides book in the same currency and no translation happens.
+
+    A pair is ``AGREED`` (both legs present, difference zero),
+    ``IC_DISAGREEMENT`` (both legs present, different amounts),
+    or ``ONE_SIDED`` (a leg on one side only — a booking one
+    entity made and the other never did, which is a different
+    failure from booking different amounts and is named
+    separately)."""
+
+    elimination_id: str
+    seller_id: str  # the entity that booked the revenue leg
+    buyer_id: str   # the entity that booked the cost leg
+    revenue_account: str
+    cost_account: str
+    seller_amount: str | None = None  # stated, in seller_currency
+    seller_currency: str
+    buyer_amount: str | None = None   # stated, in buyer_currency
+    buyer_currency: str
+    basis_currency: str  # the seller's currency — the invoice currency
+    buyer_amount_basis: str | None = None  # buyer amount in basis
+    fx_rate: str | None = None  # buyer currency → basis, when applied
+    difference: str | None = None  # seller − buyer (basis); None if one-sided
+    verdict: Literal["AGREED", "IC_DISAGREEMENT", "ONE_SIDED"]
+    missing_side: Literal["revenue", "cost"] | None = None
 
 
 class Variance(BaseModel):
@@ -289,6 +337,13 @@ class BoardPack(BaseModel):
     # restatement report when the prior period's sources moved
     # after sign-off, and the controller's acknowledgement of it.
     comparatives: list[FigureComparative] = Field(default_factory=list)
+    # The intercompany agreement check: every IC pair in the
+    # period's sources, keyed by counterparty against the pack's
+    # elimination definitions, with the verifier's verdict per
+    # pair (see :class:`ICPair`). Produced by the verifier from
+    # source, like the variances; a disagreement or a one-sided
+    # pair also lands as a named variance and blocks the pack.
+    ic_pairs: list[ICPair] = Field(default_factory=list)
     # The flux schedule: every comparative figure's movement
     # decomposed by entity and by account, footing exactly to
     # the movement (see :mod:`.flux`). None when the pack has no

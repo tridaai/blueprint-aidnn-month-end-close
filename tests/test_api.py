@@ -40,8 +40,8 @@ def test_demo_run_endpoint_tells_the_whole_story(client):
     out = client.post("/demo/run").json()
     assert out["first_pack"]["status"] == "STALE"  # superseded by the rebuild
     codes = sorted(v["code"] for v in out["first_pack"]["variances"])
-    assert codes == ["DUPLICATE_JOURNAL", "SUBLEDGER_TIE_OUT",
-                     "UNMATCHED_IC_LEG"]
+    assert codes == ["DUPLICATE_JOURNAL", "IC_ONE_SIDED",
+                     "SUBLEDGER_TIE_OUT", "UNMATCHED_IC_LEG"]
     second = out["second_pack"]
     assert second["status"] == "AWAITING_CONTROLLER"
     assert second["variances"] == []
