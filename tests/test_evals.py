@@ -37,3 +37,18 @@ def test_eval_pack_passes():
     assert results["gates"]["flux materiality flags the big movers"]
     assert results["gates"]["flux definition-changed figures flagged"]
     assert results["gates"]["restated bundle carries the flux schedule"]
+    # Round 8: definition change governance gates too.
+    assert results["gates"][
+        "governance: activation without a dry-run refused by name"]
+    assert results["gates"][
+        "governance: dry-run reproduces the hand-computed change list"]
+    assert results["gates"][
+        "governance: dry-run byte-stable; signed packs untouched"]
+    assert results["gates"][
+        "governance: activation refusals name their grounds"]
+    assert results["gates"][
+        "governance: next period selects the activated version"]
+    assert results["gates"][
+        "governance: first governed pack states the change"]
+    assert results["gates"][
+        "governance: bundle carries the activation and the dry-run"]

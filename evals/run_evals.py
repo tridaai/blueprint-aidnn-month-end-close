@@ -160,6 +160,39 @@ carried items. Its gates:
   November, the new records and the signed face state
   carry 2 with the October origin.
 
+A sixth act exercises **definition change governance** —
+the front door a new definition-pack version must walk
+through. September and October close and sign canonically on
+a fresh store; a candidate v1.2.0 (insurance leaves operating
+expenses for its own line) is measured, activated, and put in
+charge of November. Its gates:
+
+- **activation without a dry-run refused by name** — the
+  impact must exist before the act;
+- **the dry-run reproduces the hand-computed change list** —
+  the moved figures with their old → new values and deltas,
+  the added figures, no drops, no material move, no variance
+  family change, no baseline discrepancy: gold stated as
+  literals in datasets, derived from the journals by hand;
+- **the dry-run is byte-stable and inert** — recomputation
+  returns the same record and digest, and neither the
+  dry-run nor the activation alters a signed pack by a byte;
+- **activation refusals name their grounds** — an unnamed
+  actor, a missing reason, a signed from-period, and the
+  already-governing version are each refused in words;
+- **the next period selects the activated version** — a
+  November run created on a service still wired to v1.1.0
+  records v1.2.0, builds under it, and its figures are the
+  candidate's figures (the October gold with the split
+  applied);
+- **the first governed pack states the change** — version
+  from → to, the activation, and the dry-run headline counts
+  ride the pack's face;
+- **the bundle carries the governance** — November's
+  evidence bundle cites the activation and the dry-run with
+  its digest; September's bundle, from a close with no
+  change to state, projects ``definition_change: null``.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -191,6 +224,10 @@ from aidnn_close_agent.datasets import (  # noqa: E402
     RATE_CHANGED_METRICS,
     RESTATEMENT_AFFECTED,
     RESTATEMENT_BATCH_ID,
+    V120_CHANGED_METRICS,
+    V120_DRY_RUN_ADDED,
+    V120_DRY_RUN_MOVED,
+    V120_NOVEMBER_FIGURES,
     build_november_world,
     build_october_world,
     build_world,
@@ -338,6 +375,9 @@ def evaluate() -> dict:
     dispositions = _evaluate_dispositions()
     results.update(dispositions["results"])
 
+    governance = _evaluate_governance()
+    results.update(governance["results"])
+
     first_pair_ok = (
         len(first.ic_pairs) == 1
         and first.ic_pairs[0].verdict == "ONE_SIDED"
@@ -381,6 +421,7 @@ def evaluate() -> dict:
         **ic_variant["gates"],
         **rate_checks["gates"],
         **dispositions["gates"],
+        **governance["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -1050,6 +1091,240 @@ def _evaluate_dispositions() -> dict:
     out["results"]["november_second_carry"] = (
         [d.model_dump() for d in nov_signed.dispositions]
         if nov_signed is not None else [])
+    return out
+
+
+def _evaluate_governance() -> dict:
+    """Act six: definition change governance. September and
+    October close and sign canonically on a fresh store; the
+    v1.2.0 candidate (insurance out of opex, onto its own
+    line) is dry-run over signed October, activated from
+    November by a named controller, and November — created on
+    a service still wired to v1.1.0 — is selected onto it by
+    rule, states the change on its face, and cites the act and
+    the impact in its evidence bundle."""
+    controller = "Eval Controller"
+    reason = (
+        "Insurance premiums are reported to the board on their "
+        "own line from November; they leave operating expenses "
+        "and stand separately. Measured first, per the dry-run."
+    )
+    gates = {
+        "governance: activation without a dry-run refused by name":
+            False,
+        "governance: dry-run reproduces the hand-computed change list":
+            False,
+        "governance: dry-run byte-stable; signed packs untouched":
+            False,
+        "governance: activation refusals name their grounds": False,
+        "governance: next period selects the activated version":
+            False,
+        "governance: first governed pack states the change": False,
+        "governance: bundle carries the activation and the dry-run":
+            False,
+    }
+    out: dict = {"results": {}, "gates": gates}
+    store = InMemoryCloseStore()
+    pack_v100 = load_definition_pack_version("harborlight-close", "1.0.0")
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+
+    def _service(pack, connector=None):
+        return CloseService(
+            pipeline=PackPipeline(
+                engine=OfflineFinanceEngine(), store=store, pack=pack,
+                checkpointer=MemorySaver()),
+            store=store, connector=connector or DatasetConnector(),
+            objects=InMemoryObjectStore(), pack_def=pack,
+        )
+
+    september = _service(pack_v100)
+    world = build_world()
+    run = september.create_run(PERIOD)
+    september.ingest(run.run_id,
+                     [b.batch_id for b in world.batches_in_phase("initial")])
+    september.build_pack(run.run_id)
+    september.ingest(run.run_id,
+                     [b.batch_id for b in world.batches_in_phase("late")])
+    rebuilt = september.build_pack(run.run_id)
+    signed_september = september.sign_off(rebuilt.pack_id, "sign",
+                                          controller)
+    if signed_september.status != "SIGNED_OFF":
+        return out
+
+    september.receive_restatement(RESTATEMENT_BATCH_ID)
+    october = _service(pack_v110)
+    october_world = build_october_world()
+    oct_run = october.create_run(PERIOD_OCTOBER)
+    october.ingest(oct_run.run_id,
+                   [b.batch_id for b in october_world.batches])
+    oct_pack = october.build_pack(oct_run.run_id)
+    october.acknowledge_restatement(
+        oct_pack.pack_id, controller,
+        "September restatement reviewed; comparatives stand as signed.")
+    signed_october = october.sign_off(oct_pack.pack_id, "sign", controller)
+    if signed_october.status != "SIGNED_OFF":
+        return out
+    september_json = store.get_pack(
+        signed_september.pack_id).model_dump_json()
+    october_json = store.get_pack(signed_october.pack_id).model_dump_json()
+
+    # -- the act may not precede its evidence ---------------------
+    refused = ""
+    try:
+        october.activate_definition_pack("1.2.0", PERIOD_NOVEMBER,
+                                         controller, reason)
+    except GateError as exc:
+        refused = str(exc)
+    gates["governance: activation without a dry-run refused by name"] = \
+        "no dry-run on record" in refused
+
+    # -- the dry-run, against hand-computed gold -------------------
+    record = october.dry_run_definition_change("1.2.0")
+    report = record.report
+    moved = {
+        (d.metric_id, d.entity_id):
+            (d.base_value, d.candidate_value, d.delta)
+        for d in report.moved
+    }
+    added = {(f.metric_id, f.entity_id): f.value for f in report.added}
+    gates["governance: dry-run reproduces the hand-computed change list"] = (
+        moved == V120_DRY_RUN_MOVED
+        and added == V120_DRY_RUN_ADDED
+        and report.dropped == []
+        and set(report.changed_metrics) == V120_CHANGED_METRICS
+        and report.material_count == 0
+        and not any(d.material for d in report.moved)
+        and report.variance_families_base == []
+        and report.variance_families_candidate == []
+        and report.baseline_discrepancies == []
+        and report.reference_pack_id == signed_october.pack_id
+        and report.base_version == "1.1.0"
+        and all(d.signed_pack_value == d.base_value for d in report.moved)
+    )
+    out["results"]["governance_dry_run"] = record.model_dump()
+
+    # -- the dry-run is a record, not a ritual ----------------------
+    again = october.dry_run_definition_change("1.2.0")
+    gates["governance: dry-run byte-stable; signed packs untouched"] = (
+        again.dry_run_id == record.dry_run_id
+        and again.digest == record.digest
+        and again.computed_at == record.computed_at
+        and store.list_activations() == []
+        and store.get_pack(signed_september.pack_id).model_dump_json()
+        == september_json
+        and store.get_pack(signed_october.pack_id).model_dump_json()
+        == october_json
+    )
+
+    # -- the activation's refusals, each naming its ground ----------
+    refusals = {}
+    for name, kwargs in {
+        "actor": {"version": "1.2.0", "from_period": PERIOD_NOVEMBER,
+                  "actor": "", "reason": reason},
+        "reason": {"version": "1.2.0", "from_period": PERIOD_NOVEMBER,
+                   "actor": controller, "reason": ""},
+        "signed": {"version": "1.2.0", "from_period": PERIOD_OCTOBER,
+                   "actor": controller, "reason": reason},
+        "active": {"version": "1.1.0", "from_period": PERIOD_NOVEMBER,
+                   "actor": controller, "reason": reason},
+    }.items():
+        try:
+            october.activate_definition_pack(**kwargs)
+            refusals[name] = ""
+        except GateError as exc:
+            refusals[name] = str(exc)
+    gates["governance: activation refusals name their grounds"] = (
+        "must name its actor" in refusals["actor"]
+        and "must carry a reason" in refusals["reason"]
+        and "already signed" in refusals["signed"]
+        and "already governs" in refusals["active"]
+    )
+
+    activation = october.activate_definition_pack(
+        "1.2.0", PERIOD_NOVEMBER, controller, reason)
+    out["results"]["governance_activation"] = activation.model_dump()
+    history_untouched = (
+        store.get_pack(signed_september.pack_id).model_dump_json()
+        == september_json
+        and store.get_pack(signed_october.pack_id).model_dump_json()
+        == october_json
+        and signed_september.definition_pack_version == "1.0.0"
+        and signed_october.definition_pack_version == "1.1.0"
+    )
+
+    # -- November: selected by rule, not by wiring -------------------
+    november_world = build_november_world("55000.00")
+    november = _service(pack_v110, connector=_WorldConnector(november_world))
+    nov_run = november.create_run(PERIOD_NOVEMBER)
+    november.ingest(nov_run.run_id,
+                    [b.batch_id for b in november_world.batches])
+    nov_pack = november.build_pack(nov_run.run_id)
+    nov_figures = {(f.metric_id, f.entity_id): f.value
+                   for f in nov_pack.figures}
+    figures_ok = all(
+        nov_figures.get(key) == expected
+        for key, expected in V120_NOVEMBER_FIGURES.items()
+    )
+    for key, expected in october_world.gold_figures.items():
+        metric_id, _, entity_id = key.partition("@")
+        figure_key = (metric_id, entity_id or None)
+        if figure_key in V120_NOVEMBER_FIGURES:
+            continue
+        figures_ok = figures_ok and nov_figures.get(figure_key) == expected
+    gates["governance: next period selects the activated version"] = (
+        nov_run.definition_pack_version == "1.2.0"
+        and nov_pack.definition_pack_version == "1.2.0"
+        and figures_ok
+        and history_untouched
+    )
+    out["results"]["governance_november_pack"] = nov_pack.pack_id
+
+    change = nov_pack.definition_change
+    gates["governance: first governed pack states the change"] = (
+        change is not None
+        and change.from_version == "1.1.0"
+        and change.to_version == "1.2.0"
+        and change.from_period == PERIOD_NOVEMBER
+        and change.activation_id == activation.activation_id
+        and change.actor == controller
+        and change.reason == reason
+        and change.dry_run_id == record.dry_run_id
+        and change.dry_run_digest == record.digest
+        and (change.moved_count, change.added_count,
+             change.dropped_count, change.material_count) == (4, 4, 0, 0)
+    )
+
+    signed_november = None
+    if nov_pack.status == "AWAITING_CONTROLLER":
+        signed_november = november.sign_off(
+            nov_pack.pack_id, "sign", controller,
+            "first close under v1.2.0")
+    bundle_ok = False
+    september_bundle_ok = False
+    if signed_november is not None:
+        november.generate_evidence(signed_november.pack_id)
+        data, _ = november.evidence_download(signed_november.pack_id,
+                                             "json")
+        document = json.loads(data)
+        section = document.get("definition_change") or {}
+        section_activation = section.get("activation") or {}
+        section_run = section.get("dry_run") or {}
+        bundle_ok = (
+            section_activation.get("activation_id")
+            == activation.activation_id
+            and section_activation.get("to_version") == "1.2.0"
+            and section_activation.get("actor") == controller
+            and section_run.get("dry_run_id") == record.dry_run_id
+            and section_run.get("digest") == record.digest
+            and len((section_run.get("report") or {}).get("moved", [])) == 4
+        )
+        september.generate_evidence(signed_september.pack_id)
+        sept_data, _ = september.evidence_download(
+            signed_september.pack_id, "json")
+        september_bundle_ok = \
+            json.loads(sept_data)["definition_change"] is None
+    gates["governance: bundle carries the activation and the dry-run"] = \
+        bundle_ok and september_bundle_ok
     return out
 
 

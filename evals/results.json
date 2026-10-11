@@ -29,7 +29,7 @@
   },
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "24cb128ee5eb0b6bf2214ce068bdef5695f52d0f6e911e323ce3f3b827727952",
+  "evidence_sha256": "b4a7769044da90ec78595d43bfe943d9ab706797f751357598313ad4a173bee8",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -82,7 +82,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "3a8c3dec1393f3f6b30a51463b0e95703156bc85b1f4fe3a84b0efea77acfc77",
+  "october_evidence_sha256": "b3a8229035be87ab887cd1274ba1e24be1db96d5f0c6f3c60285371e1ad3899f",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -131,7 +131,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T22:53:03.124703+00:00",
+      "at": "2026-10-11T23:42:25.064484+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -150,7 +150,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T22:53:03.131974+00:00",
+      "at": "2026-10-11T23:42:25.069848+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -203,7 +203,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T22:53:03.167829+00:00",
+      "at": "2026-10-11T23:42:25.104776+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -222,13 +222,122 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T22:53:03.167874+00:00",
+      "at": "2026-10-11T23:42:25.104820+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
       "carry_number": 2
     }
   ],
+  "governance_dry_run": {
+    "dry_run_id": "DRY-harborlight-close-v1.2.0-over-PACK-RUN-2026-10-1",
+    "report": {
+      "pack_id": "harborlight-close",
+      "base_version": "1.1.0",
+      "candidate_version": "1.2.0",
+      "reference_period": "2026-10",
+      "reference_pack_id": "PACK-RUN-2026-10-1",
+      "changed_metrics": [
+        "consolidated_operating_income",
+        "consolidated_opex",
+        "opex"
+      ],
+      "moved": [
+        {
+          "metric_id": "consolidated_operating_income",
+          "entity_id": null,
+          "currency": "USD",
+          "signed_pack_value": "845940.00",
+          "base_value": "845940.00",
+          "candidate_value": "856440.00",
+          "delta": "10500.00",
+          "delta_pct": "1.24",
+          "material": false
+        },
+        {
+          "metric_id": "consolidated_opex",
+          "entity_id": null,
+          "currency": "USD",
+          "signed_pack_value": "306060.00",
+          "base_value": "306060.00",
+          "candidate_value": "295560.00",
+          "delta": "-10500.00",
+          "delta_pct": "-3.43",
+          "material": false
+        },
+        {
+          "metric_id": "opex",
+          "entity_id": "HLD",
+          "currency": "USD",
+          "signed_pack_value": "128700.00",
+          "base_value": "128700.00",
+          "candidate_value": "124200.00",
+          "delta": "-4500.00",
+          "delta_pct": "-3.50",
+          "material": false
+        },
+        {
+          "metric_id": "opex",
+          "entity_id": "HLG",
+          "currency": "USD",
+          "signed_pack_value": "62000.00",
+          "base_value": "62000.00",
+          "candidate_value": "56000.00",
+          "delta": "-6000.00",
+          "delta_pct": "-9.68",
+          "material": false
+        }
+      ],
+      "added": [
+        {
+          "metric_id": "consolidated_insurance",
+          "entity_id": null,
+          "currency": "USD",
+          "value": "10500.00"
+        },
+        {
+          "metric_id": "insurance",
+          "entity_id": "HLD",
+          "currency": "USD",
+          "value": "4500.00"
+        },
+        {
+          "metric_id": "insurance",
+          "entity_id": "HLE",
+          "currency": "EUR",
+          "value": "0.00"
+        },
+        {
+          "metric_id": "insurance",
+          "entity_id": "HLG",
+          "currency": "USD",
+          "value": "6000.00"
+        }
+      ],
+      "dropped": [],
+      "variance_families_base": [],
+      "variance_families_candidate": [],
+      "families_added": [],
+      "families_removed": [],
+      "baseline_discrepancies": []
+    },
+    "digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
+    "computed_at": "2026-10-11T23:42:25.192549+00:00"
+  },
+  "governance_activation": {
+    "activation_id": "ACT-harborlight-close-1",
+    "pack_id": "harborlight-close",
+    "from_version": "1.1.0",
+    "to_version": "1.2.0",
+    "from_period": "2026-11",
+    "dry_run_id": "DRY-harborlight-close-v1.2.0-over-PACK-RUN-2026-10-1",
+    "dry_run_digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
+    "actor": "Eval Controller",
+    "reason": "Insurance premiums are reported to the board on their own line from November; they leave operating expenses and stand separately. Measured first, per the dry-run.",
+    "at": "2026-10-11T23:42:25.198085+00:00",
+    "supersedes": null
+  },
+  "governance_november_pack": "PACK-RUN-2026-11-1",
   "ic_signed_pair": {
     "elimination_id": "ic_sales",
     "seller_id": "HLD",
@@ -291,7 +400,14 @@
     "the verifier's verdict is unchanged by disposition": true,
     "dispositions on the signed face and in the bundle": true,
     "carried item opens next period, retested still present": true,
-    "second carry counted on the face": true
+    "second carry counted on the face": true,
+    "governance: activation without a dry-run refused by name": true,
+    "governance: dry-run reproduces the hand-computed change list": true,
+    "governance: dry-run byte-stable; signed packs untouched": true,
+    "governance: activation refusals name their grounds": true,
+    "governance: next period selects the activated version": true,
+    "governance: first governed pack states the change": true,
+    "governance: bundle carries the activation and the dry-run": true
   },
   "gate_passed": true
 }
