@@ -376,7 +376,7 @@ def _hld_journals_october() -> list[Journal]:
     ]
 
 
-def _hle_journals_october() -> list[Journal]:
+def _hle_journals_october(ic_purchase: str = "55000.00") -> list[Journal]:
     return [
         _journal("J-O-E1", "HLE", [_line("1000", debit="420000.00")],
                  memo="Opening cash balance", date=_OCT),
@@ -395,8 +395,9 @@ def _hle_journals_october() -> list[Journal]:
         _journal("J-O-E6", "HLE", [_line("6200", debit="12000.00"),
                                     _line("1000", credit="12000.00")],
                  memo="Rent", date=_OCT),
-        _journal("J-O-E7", "HLE", [_line("5000", debit="55000.00", ic="HLD"),
-                                    _line("2300", credit="55000.00", ic="HLD")],
+        _journal("J-O-E7", "HLE", [_line("5000", debit=ic_purchase, ic="HLD"),
+                                    _line("2300", credit=ic_purchase,
+                                          ic="HLD")],
                  memo="Intercompany purchase from HLD (€55,000 = $61,600 "
                       "at the October rate of 1.12)", date=_OCT),
     ]
@@ -471,6 +472,49 @@ def build_october_world() -> World:
         gold_figures=gold,
         phase_a_variance_codes=[],  # October's extracts are clean
     )
+
+
+# The staged intercompany disagreement: October again, but HLE
+# books the intercompany purchase at €54,500 instead of €55,000
+# — a €500 understatement against HLD's $61,600 sale. Nothing
+# else in the extract moves, so October's entity figures still
+# equal their gold (the disputed legs sit on accounts no entity
+# metric reads, or reads only with IC lines excluded); what
+# breaks is the pairing. The expected pair record is stated
+# here as literals, like every other gold in this module: the
+# buyer's €54,500 is $61,040.00 at the October rate of 1.12,
+# so the pair disagrees by $560.00 in the seller's currency.
+IC_VARIANT_BATCH_ID = "O-HLE-GL-v1"
+IC_VARIANT_PAIR = {
+    "elimination_id": "ic_sales",
+    "seller_id": "HLD",
+    "buyer_id": "HLE",
+    "seller_amount": "61600.00",
+    "seller_currency": "USD",
+    "buyer_amount": "54500.00",
+    "buyer_currency": "EUR",
+    "buyer_amount_basis": "61040.00",
+    "fx_rate": "1.12",
+    "difference": "560.00",
+    "verdict": "IC_DISAGREEMENT",
+}
+# The consolidated figures whose arithmetic touches the
+# disputed pair's legs — the ones the pack must flag.
+IC_VARIANT_FLAGGED = {
+    "consolidated_ic_revenue", "consolidated_gross_revenue",
+    "eliminations_total",
+}
+
+
+def october_ic_variant_batch() -> SourceBatch:
+    """October's HLE extract as it would arrive with the
+    intercompany purchase understated: the same slot as
+    ``O-HLE-GL-v1``, the same journals, one amount moved. The
+    eval and the tests stage it through the connector in place
+    of the canonical extract — a variant of the world, not a
+    correction of it (October's own close stays clean)."""
+    return _batch(IC_VARIANT_BATCH_ID, "gl", "HLE", 1, None, "initial",
+                  journals=_hle_journals_october(ic_purchase="54500.00"))
 
 
 RESTATEMENT_BATCH_ID = "B-HLG-GL-v2"

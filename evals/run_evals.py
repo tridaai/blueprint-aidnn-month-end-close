@@ -79,6 +79,26 @@ account. Its gates:
   the schedule's 25 entries; September's bundle, from a close
   that predates the schedule, states ``flux: null``.
 
+Both packs also carry the **intercompany agreement check** —
+every IC pair keyed by counterparty, seller's stated figure
+against buyer's. Its gates:
+
+- **pairs enumerated completely** — September's first attempt
+  names its planted one-sided pair (``IC_ONE_SIDED``, the leg
+  HLE never booked); both signed packs carry exactly the one
+  HLD → HLE pair, ``AGREED``, with the stated figures exact
+  (September $55,000 against €50,000 at 1.10; October $61,600
+  against €55,000 at 1.12), no IC variance, no figure flagged;
+- **ic in the bundles** — both evidence bundles carry the
+  intercompany section with the agreed pair;
+- **the staged disagreement** — a variant October extract
+  (HLE books the purchase at €54,500) closes on a fresh store:
+  the pack is BLOCKED by exactly one ``IC_DISAGREEMENT``
+  naming both figures and the $560.00 difference, the pair
+  record equals the planted gold, exactly the consolidated
+  figures standing on the pair are flagged, every entity
+  figure still equals its gold, and sign-off is refused.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -97,14 +117,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
+from aidnn_close_agent.connectors import DatasetConnector  # noqa: E402
 from aidnn_close_agent.datasets import (  # noqa: E402
     DEFINITION_CHANGED_METRICS,
+    IC_VARIANT_BATCH_ID,
+    IC_VARIANT_FLAGGED,
+    IC_VARIANT_PAIR,
     PERIOD,
     PERIOD_OCTOBER,
     RESTATEMENT_AFFECTED,
     RESTATEMENT_BATCH_ID,
     build_october_world,
     build_world,
+    october_ic_variant_batch,
 )
 from aidnn_close_agent.definitions import (  # noqa: E402
     load_definition_pack_version,
@@ -114,7 +139,9 @@ from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
 from aidnn_close_agent.errors import EvidenceError, GateError  # noqa: E402
 from aidnn_close_agent.fx import D  # noqa: E402
 from aidnn_close_agent.graph import PackPipeline  # noqa: E402
+from aidnn_close_agent.object_store import InMemoryObjectStore  # noqa: E402
 from aidnn_close_agent.service import CloseService  # noqa: E402
+from aidnn_close_agent.store import InMemoryCloseStore  # noqa: E402
 
 
 def _figures(pack) -> dict:
@@ -223,6 +250,29 @@ def evaluate() -> dict:
     october = _evaluate_october(service, signed)
     results.update(october["results"])
 
+    ic_variant = _evaluate_ic_variant()
+    results.update(ic_variant["results"])
+
+    first_pair_ok = (
+        len(first.ic_pairs) == 1
+        and first.ic_pairs[0].verdict == "ONE_SIDED"
+        and first.ic_pairs[0].missing_side == "cost"
+        and first.ic_pairs[0].seller_amount == "55000.00"
+        and first.ic_pairs[0].buyer_amount is None
+    )
+    signed_pair_ok = signed is not None and (
+        len(signed.ic_pairs) == 1
+        and signed.ic_pairs[0].verdict == "AGREED"
+        and signed.ic_pairs[0].seller_amount == "55000.00"
+        and signed.ic_pairs[0].buyer_amount == "50000.00"
+        and signed.ic_pairs[0].buyer_amount_basis == "55000.00"
+        and signed.ic_pairs[0].difference == "0.00"
+        and not any(f.ic_disagreement for f in signed.figures)
+    )
+    results["ic_signed_pair"] = (
+        signed.ic_pairs[0].model_dump()
+        if signed is not None and len(signed.ic_pairs) == 1 else None)
+
     results["gates"] = {
         "planted traps named + blocked": trap_gate,
         "blocked pack refuses sign-off": blocked_refused,
@@ -237,7 +287,12 @@ def evaluate() -> dict:
         "evidence digest matches stored bytes":
             evidence["gates"]["digest_matches"],
         "evidence refused for the blocked pack": blocked_evidence_refused,
+        "ic one-sided pair named in the first attempt": first_pair_ok,
+        "ic agreed pair silent on the signed pack": signed_pair_ok,
+        "evidence bundle carries the ic pairs":
+            evidence["gates"]["ic_pairs"],
         **october["gates"],
+        **ic_variant["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -248,7 +303,7 @@ def _evaluate_evidence(service, signed) -> dict:
     complete, digest-true, and byte-identical on regeneration."""
     out: dict = {"results": {}, "gates": {
         "complete": False, "byte_identical": False,
-        "digest_matches": False}}
+        "digest_matches": False, "ic_pairs": False}}
     if signed is None:
         return out
     record = service.generate_evidence(signed.pack_id)
@@ -282,6 +337,18 @@ def _evaluate_evidence(service, signed) -> dict:
     out["gates"]["digest_matches"] = \
         hashlib.sha256(data).hexdigest() == record.sha256
 
+    section = document.get("intercompany") or []
+    out["gates"]["ic_pairs"] = (
+        len(section) == 1
+        and section[0]["verdict"] == "AGREED"
+        and section[0]["seller_id"] == "HLD"
+        and section[0]["buyer_id"] == "HLE"
+        and section[0]["seller_amount"] == "55000.00"
+        and section[0]["buyer_amount"] == "50000.00"
+        and section[0]["buyer_amount_basis"] == "55000.00"
+        and section[0]["difference"] == "0.00"
+    )
+
     again = service.generate_evidence(signed.pack_id)
     again_data, _ = service.evidence_download(signed.pack_id, "json")
     out["gates"]["byte_identical"] = (
@@ -312,6 +379,8 @@ def _evaluate_october(september_service, signed_september) -> dict:
             "flux materiality flags the big movers": False,
             "flux definition-changed figures flagged": False,
             "restated bundle carries the flux schedule": False,
+            "ic pair agrees in october": False,
+            "october bundle carries the ic pairs": False,
         }
         return out
 
@@ -343,6 +412,19 @@ def _evaluate_october(september_service, signed_september) -> dict:
     out["results"]["october_gold_passed"] = sum(gold_checks.values())
     out["results"]["october_gold_questions"] = len(gold_checks)
     out["gates"]["october gold figures exact"] = all(gold_checks.values())
+
+    oct_pair = pack.ic_pairs[0] if len(pack.ic_pairs) == 1 else None
+    out["gates"]["ic pair agrees in october"] = (
+        oct_pair is not None
+        and oct_pair.verdict == "AGREED"
+        and oct_pair.seller_amount == "61600.00"
+        and oct_pair.buyer_amount == "55000.00"
+        and oct_pair.buyer_amount_basis == "61600.00"
+        and oct_pair.difference == "0.00"
+        and not any(f.ic_disagreement for f in pack.figures)
+    )
+    out["results"]["ic_october_pair"] = (
+        oct_pair.model_dump() if oct_pair is not None else None)
 
     signed_by_key = {
         (f.metric_id, f.entity_id): f for f in signed_september.figures
@@ -480,7 +562,116 @@ def _evaluate_october(september_service, signed_september) -> dict:
         )
     out["gates"]["restated bundle carries the flux schedule"] = \
         flux_bundle_ok
+
+    ic_bundle_ok = False
+    if signed_october is not None:
+        def _section(doc):
+            section = doc.get("intercompany") or []
+            return section[0] if len(section) == 1 else None
+
+        oct_section = _section(october_doc)
+        sep_section = _section(september_doc)
+        ic_bundle_ok = (
+            oct_section is not None
+            and oct_section["verdict"] == "AGREED"
+            and oct_section["seller_amount"] == "61600.00"
+            and oct_section["buyer_amount"] == "55000.00"
+            and sep_section is not None
+            and sep_section["verdict"] == "AGREED"
+        )
+    out["gates"]["october bundle carries the ic pairs"] = ic_bundle_ok
     out["results"]["october_status"] = pack.status
+    return out
+
+
+class _VariantConnector:
+    """The dataset connector with October's HLE extract swapped
+    for the staged intercompany variant — the same staging the
+    tests use, behind the same port."""
+
+    name = "dataset-ic-variant"
+
+    def __init__(self, base: DatasetConnector) -> None:
+        self._base = base
+
+    def available(self):
+        return self._base.available()
+
+    def fetch(self, batch_id: str):
+        if batch_id == IC_VARIANT_BATCH_ID:
+            return october_ic_variant_batch()
+        return self._base.fetch(batch_id)
+
+
+def _evaluate_ic_variant() -> dict:
+    """Act three: October again, on a fresh store, with HLE's
+    intercompany purchase understated by €500 — the pair must
+    disagree by $560.00 on the close's basis, block the pack,
+    flag exactly the consolidated figures standing on it, and
+    leave every entity figure at its gold."""
+    out: dict = {"results": {}, "gates": {
+        "ic disagreement blocks with both figures": False,
+        "ic pair record equals the planted gold": False,
+        "ic flags mark exactly the consolidated figures on the pair":
+            False,
+    }}
+    store = InMemoryCloseStore()
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    service = CloseService(
+        pipeline=pipeline, store=store,
+        connector=_VariantConnector(DatasetConnector()),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    world = build_october_world()
+    run = service.create_run(PERIOD_OCTOBER)
+    service.ingest(run.run_id, [b.batch_id for b in world.batches])
+    pack = service.build_pack(run.run_id)
+
+    disagreements = [v for v in pack.variances
+                     if v.code == "IC_DISAGREEMENT"]
+    detail = disagreements[0].detail if len(disagreements) == 1 else ""
+    refused = False
+    try:
+        service.sign_off(pack.pack_id, "sign", "Eval Controller")
+    except GateError:
+        refused = True
+    out["gates"]["ic disagreement blocks with both figures"] = (
+        pack.status == "BLOCKED"
+        and len(disagreements) == 1
+        and all(figure in detail for figure in
+                ("61600.00", "54500.00", "61040.00", "560.00"))
+        and refused
+    )
+
+    pair = pack.ic_pairs[0] if len(pack.ic_pairs) == 1 else None
+    out["gates"]["ic pair record equals the planted gold"] = (
+        pair is not None
+        and all(getattr(pair, name) == expected
+                for name, expected in IC_VARIANT_PAIR.items())
+        and pair.missing_side is None
+    )
+    out["results"]["ic_variant_pair"] = (
+        pair.model_dump() if pair is not None else None)
+    out["results"]["ic_variant_status"] = pack.status
+
+    flagged = {f.metric_id for f in pack.figures if f.ic_disagreement}
+    entity_gold_ok = True
+    for key, expected in world.gold_figures.items():
+        metric_id, _, entity_id = key.partition("@")
+        if not entity_id:
+            continue
+        figure = next((f for f in pack.figures
+                       if f.metric_id == metric_id
+                       and f.entity_id == entity_id), None)
+        entity_gold_ok = entity_gold_ok and figure is not None \
+            and figure.value == expected and not figure.ic_disagreement
+    out["gates"][
+        "ic flags mark exactly the consolidated figures on the pair"
+    ] = flagged == IC_VARIANT_FLAGGED and entity_gold_ok
     return out
 
 
