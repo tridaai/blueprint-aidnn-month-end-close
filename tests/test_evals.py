@@ -18,3 +18,9 @@ def test_eval_pack_passes():
     assert results["gate_passed"], results["gates"]
     assert results["gold_passed"] == results["gold_questions"] == 25
     assert results["traceability"] == 1.0
+    # Act two: the comparative month gates too.
+    assert results["october_gold_passed"] == \
+        results["october_gold_questions"] == 25
+    assert results["gates"]["comparatives tie to the signed pack"]
+    assert results["gates"]["restatement named with gold figures"]
+    assert results["gates"]["signed prior pack byte-identical"]

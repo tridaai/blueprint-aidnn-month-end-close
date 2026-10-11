@@ -19,6 +19,31 @@
     "consolidated cash ties": true
   },
   "phase_b_status": "SIGNED_OFF",
+  "october_gold_passed": 25,
+  "october_gold_questions": 25,
+  "restatement_affected": {
+    "opex@HLG": [
+      "54000.00",
+      "61000.00"
+    ],
+    "cash@HLG": [
+      "196000.00",
+      "189000.00"
+    ],
+    "consolidated_opex": [
+      "297250.00",
+      "304250.00"
+    ],
+    "consolidated_operating_income": [
+      "783250.00",
+      "776250.00"
+    ],
+    "consolidated_cash": [
+      "376750.00",
+      "369750.00"
+    ]
+  },
+  "october_status": "SIGNED_OFF",
   "gates": {
     "planted traps named + blocked": true,
     "blocked pack refuses sign-off": true,
@@ -26,7 +51,14 @@
     "gold figures exact": true,
     "traceability == 1.0": true,
     "consolidation ties hold": true,
-    "verified pack signs + run closes": true
+    "verified pack signs + run closes": true,
+    "october gold figures exact": true,
+    "comparatives tie to the signed pack": true,
+    "definition changes flagged": true,
+    "restatement named with gold figures": true,
+    "unacknowledged restatement holds the signature": true,
+    "acknowledged restatement signs": true,
+    "signed prior pack byte-identical": true
   },
   "gate_passed": true
 }
