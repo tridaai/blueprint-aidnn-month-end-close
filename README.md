@@ -165,6 +165,17 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   step, and a stale pack cannot be signed — sign-off re-checks
   the stamps, so the rule holds even if a marking step is
   missed.
+- **Rate provenance** — the stamp carries the rate table
+  itself, not just its version, so every converted figure's
+  provenance names the rate that produced it. The verifier
+  recomputes conversions at the **stamped** table — never at
+  whatever table the batch set carries when it runs — and a
+  table that moved after the run, or was edited in place under
+  the same version, is named `RATE_TABLE_MISMATCH` while the
+  figures still reproduce at their stamp. A figure that
+  reproduces at the batch table but not at its own stamp was
+  converted off-stamp, and is named per figure as the
+  provenance break it is, not blurred into a figure mismatch.
 - **The gate** — verified packs stop mid-pipeline at a
   LangGraph interrupt, checkpointed in Postgres, until the
   group controller signs or returns them, by name, with a
@@ -199,6 +210,23 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   flag with both versions named. October runs under pack
   v1.1.0, which widened operating expenses to include
   insurance; September's comparatives say so.
+- **Rate changes are flagged the same way** — definitions are
+  one silent input; rates are the other. September signed at
+  EUR 1.10 (rate table v2); October converts at 1.12 (table
+  v3). A consolidated comparative whose derivation converts
+  money booked in a currency whose rate moved carries a
+  `RATE_CHANGED` flag — judged from the two packs' own
+  records, so a figure no EUR flows through (the consolidated
+  intercompany revenue, whose converted metric is nonzero only
+  in USD; the pipeline total, which converts nothing) stays
+  unflagged, and entity figures are never flagged: they stand
+  in their own currency. The flux schedule states both rate
+  tables' versions on its face beside the definition versions
+  and carries the flag per entry. Like the definition flag,
+  it is a flag, not a decomposition: the movement is never
+  split into a "rate part" and a "trading part" — that split
+  would mean converting one period at the other period's
+  rates and presenting the counterfactual as fact.
 - **Flux: every movement explains itself, and the explanation
   foots** — alongside the comparatives, the pack carries a
   flux schedule: each figure's period-over-period movement
@@ -257,7 +285,8 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   verifier's verdict as recorded, the manifest of the exact
   source extracts consumed (versions and the content hashes
   from ingestion), the comparatives and the signed pack they
-  cite, the flux schedule, any restatement and its
+  cite, the **rate provenance** (both closes' stamped rate
+  tables and the rates that moved between them), the flux schedule, any restatement and its
   acknowledgement, and the sign-off record with the checklist
   state the signature froze. The bundle is a **projection of stored records** —
   it recomputes nothing — it is refused for anything but a
@@ -391,6 +420,19 @@ gates on it:
   `IC_DISAGREEMENT` naming both figures and the $560.00
   difference, flags exactly the consolidated figures standing
   on the pair, and leaves every entity figure at its gold.
+- **Rate provenance** — both signed packs stamp the rate
+  table itself (September v2 at EUR 1.10, October v3 at
+  1.12) on the pack and on every figure; October's
+  comparatives flag `RATE_CHANGED` on exactly the eight
+  consolidated figures EUR money flows through, the flux
+  schedule states both table versions and agrees, and
+  October's bundle carries both tables with the change named.
+  A staged fourth act replays October's figures against an
+  FX batch edited in place (EUR 1.15, same batch and table
+  version): the verifier names `RATE_TABLE_MISMATCH` and
+  still reproduces every figure at the stamp; figures
+  re-stamped with a table they were not computed at are
+  named per figure as converted off-stamp.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.

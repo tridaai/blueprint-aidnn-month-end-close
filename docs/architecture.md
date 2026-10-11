@@ -199,8 +199,35 @@ change.
   by construction, and the eval pack checks it in independent
   arithmetic.
 - **Rates are data.** The rate table is a versioned source
-  batch; a pack stamps the FX version it used. A revised rate
-  table is a superseding batch like any other — see staleness.
+  batch; a pack stamps the table it used — the table itself,
+  on `SourceVersions.fx_table`, not only its version — so a
+  converted figure's provenance names the rate applied to it.
+  A revised rate table is a superseding batch like any other
+  — see staleness.
+- **The verifier recomputes at the stamped table.** Its
+  conversions never read whatever table the batch set carries
+  at verify time. A stamp that disagrees with the batch set —
+  a table superseded after the run, or edited in place under
+  the same version (invisible to version-granular staleness) —
+  is a `RATE_TABLE_MISMATCH` variance, and each figure is
+  still judged against the stamped basis. When a figure
+  reproduces at the batch-set table but not at its stamp, the
+  mismatch is classified per figure as the same code: the
+  figure was converted off-stamp. Figures stamped before
+  tables rode the stamp carry none; the verifier falls back
+  to the batch set's table for them, and comparatives across
+  such a pack flag nothing — absence reads as absence.
+- **Rate changes flag like definition changes.** When a
+  currency's rate differs between a signed pack's stamp and
+  the next pack's, consolidated comparatives whose derivation
+  converts nonzero money booked in that currency carry
+  `rate_changed` (exposure judged from the two packs' own
+  figures and IC pairs, propagated through the derived-metric
+  closure in `comparatives.rate_exposed_metrics`). The flux
+  schedule states both tables' versions on its face and
+  copies the flag per entry; `verify_flux` checks the copy.
+  The movement is never decomposed into rate and trading
+  parts — the same counterfactual argument as definitions.
 
 ## The checklist and staleness: two state machines
 
