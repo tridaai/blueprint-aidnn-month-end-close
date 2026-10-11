@@ -29,6 +29,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from . import comparatives as comparatives_module
+from . import dispositions as dispositions_module
 from . import flux as flux_module
 from . import verifier as verifier_module
 from .definitions import DefinitionPack
@@ -225,6 +226,44 @@ class PackPipeline:
                               "definitions would be a fabrication",
                 })
 
+        # The disposition layer: governance around the verdict,
+        # consulted only after the verdict is fully computed.
+        # Carried acceptances from the prior signed pack are
+        # re-tested against this build's variances as opening
+        # items — cleared, still present, or mutated — whatever
+        # the pack's own fate. And when the pack is blocked, the
+        # run's governing acceptances are checked for coverage:
+        # every blocking variance covered, exactly as computed,
+        # is the second honest path to the gate. The variances
+        # themselves are untouched either way.
+        carried = context.get("carried") or []
+        if carried:
+            pack.opening_items = dispositions_module.retest_items(
+                carried, pack)
+            pack.audit.append({
+                "event": "opening_items_retested", "at": _now(),
+                "detail": "; ".join(
+                    f"{item.code}"
+                    f"{f' ({item.subject})' if item.subject else ''} "
+                    f"carried from {item.origin_period} "
+                    f"(acceptance {item.disposition_id}, carry "
+                    f"{item.carry_number}): {item.retest}"
+                    for item in pack.opening_items
+                ),
+            })
+        governing = context.get("dispositions") or []
+        blocking = dispositions_module.blocking_variances(pack)
+        covering = [
+            d for d in governing
+            if any(dispositions_module.disposition_covers(d, pack, v)
+                   for v in blocking)
+        ]
+        presented = bool(blocking) and all(
+            any(dispositions_module.disposition_covers(d, pack, v)
+                for d in governing)
+            for v in blocking
+        )
+
         if report.passed and not comparative_failures and not flux_failures:
             pack.status = "AWAITING_CONTROLLER"
             pack.narrative = build_narrative(pack.figures, pack.period,
@@ -236,6 +275,41 @@ class PackPipeline:
                           + ("; the signature is held on the restatement "
                              "variance until it is acknowledged"
                              if pack.restatement is not None else ""),
+            })
+        elif presented:
+            # Presented for sign-off under disposition. The
+            # acceptances ride the pack's face — the signed
+            # record will list what was accepted, by whom, and
+            # why, next to the variances, which stand exactly
+            # as computed. The narrative is built only where it
+            # cannot misstate: every figure verified, no pair
+            # in dispute (its eliminations sentence speaks of
+            # legs "verified present and paired"), and no flux
+            # failure (a schedule the verifier rejected is not
+            # quoted). Elsewhere the pack's account of itself
+            # is the variances and the acceptances.
+            pack.status = "AWAITING_CONTROLLER"
+            pack.dispositions = covering
+            if all(f.status == "verified" for f in pack.figures) \
+                    and not any(p.verdict != "AGREED"
+                                for p in pack.ic_pairs) \
+                    and not flux_failures:
+                pack.narrative = build_narrative(
+                    pack.figures, pack.period, flux=pack.flux)
+            pack.audit.append({
+                "event": "presented_under_disposition", "at": _now(),
+                "detail": "the verifier's verdict stands — "
+                          + "; ".join(
+                              f"{v.code}: {v.detail}" for v in blocking)
+                          + " — and every blocking variance is "
+                          "accepted on the record: "
+                          + "; ".join(
+                              f"{d.code}"
+                              f"{f' ({d.subject})' if d.subject else ''} "
+                              f"accepted by {d.actor} "
+                              f"({d.disposition_id}, carry "
+                              f"{d.carry_number})"
+                              for d in covering),
             })
         else:
             pack.status = "BLOCKED"

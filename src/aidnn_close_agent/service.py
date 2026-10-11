@@ -22,6 +22,14 @@ service owns the close discipline the graph does not:
   restatement cannot be signed, and a restatement batch is
   received outside any run, because a signed period's run is
   closed and its record is history;
+- **dispositions are recorded here, and only here** — a named
+  controller's acceptance of a blocking variance (see
+  :mod:`.dispositions`) is a service record on the blocked
+  pack, actor and reason required, append-only. It changes
+  neither the variance nor the pack's status: the close's
+  next build re-verifies from source and is presented for
+  sign-off only when every blocking variance is covered by a
+  governing acceptance, with the acceptances on its face;
 - **the audit evidence bundle is a projection** — generated
   only for a signed pack, assembled from stored records by
   :mod:`.evidence`, checked for completeness before anything
@@ -42,6 +50,7 @@ from pathlib import Path
 from langgraph.types import Command
 
 from . import comparatives as comparatives_module
+from . import dispositions as dispositions_module
 from . import evidence as evidence_module
 from . import guardrails
 from .definitions import DefinitionPack
@@ -60,6 +69,7 @@ from .schemas import (
     Acknowledgement,
     BoardPack,
     CloseRun,
+    Disposition,
     EvidenceBundle,
     SourceBatch,
 )
@@ -241,6 +251,16 @@ class CloseService:
         self.pipeline.contexts[pack_id] = {
             "marts": marts, "batches": batches,
             "comparatives": comparative_ctx,
+            # The disposition layer, prepared here for the same
+            # reason: the run's governing acceptances (a rebuild
+            # is presented for sign-off when every blocking
+            # variance is covered by one) and the prior signed
+            # pack's carried acceptances (re-tested against this
+            # build's variances as opening items).
+            "dispositions": dispositions_module.governing_dispositions(
+                self.store, run.run_id),
+            "carried": dispositions_module.prepare_carried(
+                self.store, run.period),
         }
         config = {"configurable": {"thread_id": pack_id}}
         state = {"run_id": run.run_id, "pack_id": pack_id, "period": run.period}
@@ -272,7 +292,9 @@ class CloseService:
             raise GateError(
                 f"pack {pack_id} is {pack.status}; only AWAITING_CONTROLLER "
                 "packs can be signed — a blocked pack is fixed by fixing its "
-                "sources, a stale pack by rebuilding it"
+                "sources, or presented by accepting its breaks on the "
+                "record (a disposition per blocking variance, then a "
+                "rebuild), a stale pack by rebuilding it"
             )
         run = self.get_run(pack.run_id)
         if pack.source_versions.batches != self._current_versions(run):
@@ -337,6 +359,149 @@ class CloseService:
         pack.audit.append({
             "event": "restatement_acknowledged", "at": _now(),
             "detail": f"{actor}: {note}",
+        })
+        pack.updated_at = _now()
+        self.store.save_pack(pack)
+        return pack
+
+    def record_disposition(self, pack_id: str, *, code: str, actor: str,
+                           reason: str, entity_id: str | None = None,
+                           metric_id: str | None = None,
+                           subject: str | None = None) -> BoardPack:
+        """Record a named controller's acceptance of one blocking
+        variance on a blocked pack: ACCEPTED_CARRY, with a reason.
+
+        The record changes nothing else — not the variance (it
+        stands on the pack word for word), not the pack's status
+        (it stays BLOCKED; the acceptance is presented by the
+        close's next build, which re-verifies from source and is
+        presented for sign-off only when every blocking variance
+        is covered). Recording is append-only: accepting the same
+        break again supersedes the governing record with a new
+        one naming it, and the chain stays on the pack.
+
+        Refusals, each naming its ground: an unnamed controller;
+        a missing reason; a pack that is not BLOCKED (a signed
+        pack is history, an awaiting pack has no blocking
+        variance to accept); a code the pack does not carry, or
+        carries only as the restatement variance — that one is
+        governed by the acknowledgement, not by disposition,
+        because it holds a signature rather than blocking a
+        pack; and a code that names more than one break on the
+        pack with no subject to tell them apart."""
+        if not actor or not actor.strip():
+            raise GateError("a disposition must name its controller")
+        if not reason or not reason.strip():
+            raise GateError(
+                "a disposition must carry a reason — why this break "
+                "is accepted, in the controller's own words"
+            )
+        pack = self.get_pack(pack_id)
+        if pack.status != "BLOCKED":
+            raise GateError(
+                f"pack {pack_id} is {pack.status}; dispositions are "
+                "recorded on a BLOCKED pack — a signed pack is "
+                "history, a stale pack is rebuilt first, and an "
+                "awaiting pack has no blocking variance to accept"
+            )
+        if code in dispositions_module.NON_BLOCKING_CODES:
+            raise GateError(
+                f"{code} is not a blocking variance and cannot be "
+                "dispositioned: it does not hold this pack at "
+                "BLOCKED — it holds the signature, and it is "
+                "governed by the restatement acknowledgement, "
+                "which is the record a controller makes for it"
+            )
+        candidates = [
+            v for v in dispositions_module.blocking_variances(pack)
+            if v.code == code and v.entity_id == entity_id
+            and v.metric_id == metric_id
+        ]
+        if not candidates:
+            raise GateError(
+                f"pack {pack_id} carries no blocking variance "
+                f"{code}"
+                + (f" for entity {entity_id}" if entity_id else "")
+                + (f" on metric {metric_id}" if metric_id else "")
+                + " — a disposition accepts a break the verifier "
+                "actually computed, by its name"
+            )
+        if len(candidates) > 1 or subject is not None:
+            named = [
+                v for v in candidates
+                if dispositions_module.subject_for(pack, v)
+                == (subject or "")
+            ]
+            if len(named) != 1:
+                subjects = sorted({
+                    dispositions_module.subject_for(pack, v)
+                    for v in candidates
+                })
+                raise GateError(
+                    f"{code} names {len(candidates)} breaks on pack "
+                    f"{pack_id}; name the one being accepted by its "
+                    f"subject ({', '.join(subjects)})"
+                )
+            candidates = named
+        variance = candidates[0]
+        var_subject = dispositions_module.subject_for(pack, variance)
+        core = dispositions_module.core_key(
+            code, entity_id, metric_id, var_subject)
+        # Supersession: the governing record for this exact
+        # break on this pack, if one stands, is replaced — by a
+        # new record naming it, never by an edit.
+        supersedes = None
+        for existing in pack.dispositions:
+            if (existing.code, existing.entity_id, existing.metric_id,
+                    existing.subject, existing.detail) == (
+                    code, entity_id, metric_id, var_subject,
+                    variance.detail) and not any(
+                    d.supersedes == existing.disposition_id
+                    for d in pack.dispositions):
+                supersedes = existing.disposition_id
+        # Lineage: a break that opened this pack as a carried
+        # item and still breaks (or came back mutated) keeps its
+        # origin; its acceptance here is the next carry.
+        origin_period, origin_pack_id, carry_number = \
+            pack.period, pack.pack_id, 1
+        for item in pack.opening_items:
+            if (item.code, item.entity_id, item.metric_id,
+                    item.subject) == core \
+                    and item.retest in ("STILL_PRESENT", "MUTATED"):
+                origin_period = item.origin_period
+                origin_pack_id = item.origin_pack_id
+                carry_number = item.carry_number + 1
+                break
+        record = Disposition(
+            disposition_id=(
+                f"DISP-{pack.pack_id}-{len(pack.dispositions) + 1}"),
+            pack_id=pack.pack_id,
+            run_id=pack.run_id,
+            period=pack.period,
+            code=code,
+            entity_id=entity_id,
+            metric_id=metric_id,
+            subject=var_subject,
+            detail=variance.detail,
+            actor=actor,
+            reason=reason,
+            at=_now(),
+            supersedes=supersedes,
+            origin_period=origin_period,
+            origin_pack_id=origin_pack_id,
+            carry_number=carry_number,
+        )
+        pack.dispositions.append(record)
+        pack.audit.append({
+            "event": "variance_dispositioned", "at": _now(),
+            "detail": f"{record.disposition_id}: {code}"
+                      f"{f' ({var_subject})' if var_subject else ''} "
+                      f"accepted and carried by {actor} — {reason}"
+                      + (f" (carry {carry_number}, first accepted on "
+                         f"{origin_pack_id} in {origin_period})"
+                         if carry_number > 1 else "")
+                      + (f"; supersedes {supersedes}" if supersedes
+                         else ""),
         })
         pack.updated_at = _now()
         self.store.save_pack(pack)
