@@ -31,6 +31,21 @@ at all but the prior period's **signed pack record**: a
 comparative must cite the signed figure exactly, because the
 signed record — not a recompute over possibly-restated sources —
 is what the board approved.
+
+Rates are checked the way definitions are: as a stamped input,
+not an ambient one. The figures under verification carry the
+rate table that produced them on their provenance stamp, and
+the verifier recomputes conversions at the **stamped** table —
+never at whatever table the batch set happens to carry when
+it runs. When the two are not the same table, the difference
+is named (``RATE_TABLE_MISMATCH``): a table edited after the
+run has repriced nothing, and a figure that reproduces at the
+batch table but not at its own stamp was converted off-stamp —
+a provenance break, reported as what it is, not blurred into
+a figure mismatch. Figures stamped before tables were carried
+on the stamp carry no table; the verifier then falls back to
+the batch set's table, as it did before. Absence reads as
+absence.
 """
 
 from __future__ import annotations
@@ -40,7 +55,16 @@ from decimal import Decimal
 
 from . import policy
 from .definitions import DefinitionPack, MetricDefinition
-from .fx import D, ZERO, RateTable, money, q
+from .fx import (
+    D,
+    ZERO,
+    RateTable,
+    changed_currencies,
+    money,
+    q,
+    rate_summary,
+    tables_differ,
+)
 from .schemas import (
     BoardPack,
     Figure,
@@ -382,6 +406,171 @@ def ic_flagged_metrics(pack: DefinitionPack,
     return flagged
 
 
+# -- rate provenance ---------------------------------------------------
+#
+# A converted figure is only as trustworthy as the rate that
+# produced it, so the rate table is verified as an input, not
+# assumed as an environment. The figures carry the table on
+# their provenance stamp (SourceVersions.fx_table); the batch
+# set carries the table the run most recently ingested. The
+# two are supposed to be the same table. When they are not —
+# a table superseded after the figures were struck, or edited
+# in place under the same version — the verifier still
+# recomputes at the *stamped* rates, and names the break:
+# the close under verification was struck on the basis it
+# stamps, and no later table reprices it silently.
+
+
+def _stamped_table(engine_figures: list[Figure],
+                   ) -> tuple[RateTable | None, list[Variance]]:
+    """The one rate table the figures under verification stamp,
+    or ``None`` when none of them carries one (figures stamped
+    before tables rode the stamp). Figures from one close
+    convert on one basis; a set claiming two tables was not
+    produced by one run, and that is named — the verifier then
+    recomputes at the first figure's stamp."""
+    distinct: list[RateTable] = []
+    for figure in engine_figures:
+        table = figure.source_versions.fx_table
+        if table is not None and table not in distinct:
+            distinct.append(table)
+    if not distinct:
+        return None, []
+    if len(distinct) == 1:
+        return distinct[0], []
+    return distinct[0], [Variance(
+        code="RATE_TABLE_MISMATCH",
+        detail=(
+            "the figures under verification do not stamp one rate "
+            "table: they claim "
+            + ", ".join(rate_summary(t) for t in distinct)
+            + " — figures from one close convert on one basis, so "
+              "a set claiming two was not produced by one run; the "
+              "verifier recomputes at the first figure's stamp"
+        ),
+    )]
+
+
+def _table_mismatch_detail(stamp: RateTable, batch: RateTable) -> str:
+    changed = changed_currencies(stamp, batch)
+    if changed:
+        parts = []
+        for currency, (before, after) in changed.items():
+            before_text = before if before is not None \
+                else "absent from the stamp"
+            after_text = after if after is not None \
+                else "absent from the batches"
+            parts.append(f"{currency}: {before_text} stamped, "
+                         f"{after_text} in the batches")
+        moves = "; ".join(parts)
+    else:
+        moves = ("no rate differs numerically — the tables are "
+                 "different versions of record")
+    return (
+        f"the figures under verification stamp {rate_summary(stamp)}, "
+        f"but the source batches carry {rate_summary(batch)} ({moves}). "
+        "The verifier recomputes at the stamped table — the rates "
+        "the figures claim as their provenance. A rate table that "
+        "moved after the run, or was edited in place under the "
+        "same version, does not silently reprice a close that was "
+        "struck at other rates"
+    )
+
+
+def _converted_legs(pack: DefinitionPack,
+                    lines_by_entity: dict[str, list[_RawLine]],
+                    rates: RateTable,
+                    currencies: dict[str, str],
+                    ) -> dict[str, tuple[Decimal, Decimal]]:
+    """Per elimination, the (revenue, cost) leg totals converted
+    at ``rates`` — the pairing inputs, computed under one table
+    so a whole recomputation stands on one basis."""
+    legs: dict[str, tuple[Decimal, Decimal]] = {}
+    for elim in pack.eliminations:
+        revenue = ZERO
+        for entity_id, amount in _legs(lines_by_entity,
+                                       elim.revenue_account,
+                                       "credit").items():
+            revenue += rates.convert(amount, currencies[entity_id])
+        cost = ZERO
+        for entity_id, amount in _legs(lines_by_entity,
+                                       elim.cost_account,
+                                       "debit").items():
+            cost += rates.convert(amount, currencies[entity_id])
+        legs[elim.elimination_id] = (q(revenue), q(cost))
+    return legs
+
+
+def _compute_values(pack: DefinitionPack,
+                    lines_by_entity: dict[str, list[_RawLine]],
+                    rates: RateTable,
+                    currencies: dict[str, str],
+                    matched_by_elim: dict[str, Decimal],
+                    batches: list[SourceBatch],
+                    ) -> dict[tuple[str, str | None], Decimal]:
+    """Every figure's value recomputed from raw lines under one
+    rate table: base metrics from the lines, derived metrics in
+    dependency order, conversions at ``rates`` throughout."""
+    entity_ids = pack.entity_ids()
+    values: dict[tuple[str, str | None], Decimal] = {}
+    for metric in pack.metrics:
+        if metric.derived is not None:
+            continue
+        if metric.scope == "entity":
+            for entity_id in entity_ids:
+                values[(metric.metric_id, entity_id)] = _sum(
+                    lines_by_entity.get(entity_id, []), metric
+                )
+        elif metric.scope == "group" and metric.source == "crm":
+            total = ZERO
+            for batch in batches:
+                if batch.kind == "crm":
+                    for opp in batch.opportunities:
+                        total += D(opp.amount)
+            values[(metric.metric_id, None)] = q(total)
+
+    pending = [m for m in pack.metrics if m.derived is not None]
+    while pending:
+        progressed = False
+        for metric in list(pending):
+            derived = metric.derived
+            assert derived is not None
+            if derived.op == "sum_converted":
+                if not all((derived.of, e) in values for e in entity_ids):
+                    continue
+                total = ZERO
+                for entity_id in entity_ids:
+                    total += rates.convert(values[(derived.of, entity_id)],
+                                           currencies[entity_id])
+                values[(metric.metric_id, None)] = q(total)
+            elif derived.op in ("add", "subtract"):
+                if not all((a, None) in values for a in derived.args):
+                    continue
+                total = values[(derived.args[0], None)]
+                for arg in derived.args[1:]:
+                    total = total + values[(arg, None)] \
+                        if derived.op == "add" \
+                        else total - values[(arg, None)]
+                values[(metric.metric_id, None)] = q(total)
+            elif derived.op == "vs_plan":
+                if (derived.of, None) not in values:
+                    continue
+                values[(metric.metric_id, None)] = q(
+                    values[(derived.of, None)]
+                    - D(pack.plan.get(derived.of, "0"))
+                )
+            elif derived.op == "elimination":
+                values[(metric.metric_id, None)] = matched_by_elim[
+                    derived.elimination_id or ""
+                ]
+            pending.remove(metric)
+            progressed = True
+        if not progressed:
+            raise ValueError(
+                "definition pack has an unresolvable derived metric")
+    return values
+
+
 def verify(pack: DefinitionPack, batches: list[SourceBatch],
            engine_figures: list[Figure]) -> VerificationReport:
     """Recompute the pack's figures from source and compare.
@@ -395,24 +584,48 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
     entity_ids = pack.entity_ids()
 
     fx_batch = next((b for b in batches if b.kind == "fx"), None)
-    rates: RateTable = fx_batch.rate_table if fx_batch and fx_batch.rate_table \
+    batch_table: RateTable | None = fx_batch.rate_table \
+        if fx_batch is not None else None
+    batch_rates: RateTable = batch_table if batch_table is not None \
         else RateTable(version=0, reporting_currency=pack.reporting_currency)
+
+    # --- rate provenance: the stamp is the recomputation basis ----
+    # The figures' stamped table governs every conversion below.
+    # A batch-set table that is not the stamped table is named —
+    # and otherwise ignored: it reprices nothing here.
+    stamp, stamp_variances = _stamped_table(engine_figures)
+    variances.extend(stamp_variances)
+    if stamp is not None:
+        if batch_table is None:
+            variances.append(Variance(
+                code="RATE_TABLE_MISMATCH",
+                detail=(
+                    f"the figures under verification stamp "
+                    f"{rate_summary(stamp)}, but the source batches "
+                    "carry no rate table at all — the conversions "
+                    "behind the figures cannot be tied to the "
+                    "sources as presented. The verifier recomputes "
+                    "at the stamped table — the rates the figures "
+                    "claim as their provenance"
+                ),
+            ))
+        elif tables_differ(stamp, batch_table):
+            variances.append(Variance(
+                code="RATE_TABLE_MISMATCH",
+                detail=_table_mismatch_detail(stamp, batch_table),
+            ))
+    rates: RateTable = stamp if stamp is not None else batch_rates
 
     lines_by_entity = _entity_lines(batches, pack, variances)
 
     # --- eliminations: the legs must pair -------------------------
-    matched_by_elim: dict[str, Decimal] = {}
+    legs = _converted_legs(pack, lines_by_entity, rates, currencies)
+    matched_by_elim = {
+        elim_id: min(revenue, cost)
+        for elim_id, (revenue, cost) in legs.items()
+    }
     for elim in pack.eliminations:
-        revenue = ZERO
-        for entity_id, amount in _legs(lines_by_entity, elim.revenue_account,
-                                       "credit").items():
-            revenue += rates.convert(amount, currencies[entity_id])
-        cost = ZERO
-        for entity_id, amount in _legs(lines_by_entity, elim.cost_account,
-                                       "debit").items():
-            cost += rates.convert(amount, currencies[entity_id])
-        revenue, cost = q(revenue), q(cost)
-        matched_by_elim[elim.elimination_id] = min(revenue, cost)
+        revenue, cost = legs[elim.elimination_id]
         if revenue != cost:
             gap = abs(revenue - cost)
             variances.append(Variance(
@@ -471,59 +684,25 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
                 ))
 
     # --- recompute every figure --------------------------------------
-    values: dict[tuple[str, str | None], Decimal] = {}
-    for metric in pack.metrics:
-        if metric.derived is not None:
-            continue
-        if metric.scope == "entity":
-            for entity_id in entity_ids:
-                values[(metric.metric_id, entity_id)] = _sum(
-                    lines_by_entity.get(entity_id, []), metric
-                )
-        elif metric.scope == "group" and metric.source == "crm":
-            total = ZERO
-            for batch in batches:
-                if batch.kind == "crm":
-                    for opp in batch.opportunities:
-                        total += D(opp.amount)
-            values[(metric.metric_id, None)] = q(total)
-
-    pending = [m for m in pack.metrics if m.derived is not None]
-    while pending:
-        progressed = False
-        for metric in list(pending):
-            derived = metric.derived
-            assert derived is not None
-            if derived.op == "sum_converted":
-                if not all((derived.of, e) in values for e in entity_ids):
-                    continue
-                total = ZERO
-                for entity_id in entity_ids:
-                    total += rates.convert(values[(derived.of, entity_id)],
-                                           currencies[entity_id])
-                values[(metric.metric_id, None)] = q(total)
-            elif derived.op in ("add", "subtract"):
-                if not all((a, None) in values for a in derived.args):
-                    continue
-                total = values[(derived.args[0], None)]
-                for arg in derived.args[1:]:
-                    total = total + values[(arg, None)] if derived.op == "add" \
-                        else total - values[(arg, None)]
-                values[(metric.metric_id, None)] = q(total)
-            elif derived.op == "vs_plan":
-                if (derived.of, None) not in values:
-                    continue
-                values[(metric.metric_id, None)] = q(
-                    values[(derived.of, None)] - D(pack.plan.get(derived.of, "0"))
-                )
-            elif derived.op == "elimination":
-                values[(metric.metric_id, None)] = matched_by_elim[
-                    derived.elimination_id or ""
-                ]
-            pending.remove(metric)
-            progressed = True
-        if not progressed:
-            raise ValueError("definition pack has an unresolvable derived metric")
+    values = _compute_values(pack, lines_by_entity, rates, currencies,
+                             matched_by_elim, batches)
+    # The second computation, at the batch-set table, exists only
+    # to *classify* a mismatch when the stamp and the batches
+    # disagree: a figure that reproduces at the batch table but
+    # not at its own stamp was converted off-stamp, and the
+    # compare below names it as such rather than as a bare
+    # figure mismatch.
+    alt_values: dict[tuple[str, str | None], Decimal] | None = None
+    if stamp is not None and batch_table is not None \
+            and tables_differ(stamp, batch_table):
+        alt_legs = _converted_legs(pack, lines_by_entity, batch_rates,
+                                   currencies)
+        alt_matched = {
+            elim_id: min(revenue, cost)
+            for elim_id, (revenue, cost) in alt_legs.items()
+        }
+        alt_values = _compute_values(pack, lines_by_entity, batch_rates,
+                                     currencies, alt_matched, batches)
 
     # --- compare ------------------------------------------------------
     engine_by_key = {
@@ -546,16 +725,37 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
             ))
             if not ok:
                 where = f" for {key[1]}" if key[1] else ""
+                code = "FIGURE_MISMATCH"
                 if engine_value is None:
                     detail = (f"the engine returned no figure for "
                               f"{key[0]}{where}; the verifier recomputes "
                               f"{money(verifier_value)} from source")
+                elif alt_values is not None \
+                        and key in alt_values \
+                        and D(engine_value) == alt_values[key] \
+                        and alt_values[key] != verifier_value:
+                    # The figure reproduces exactly at the
+                    # batch-set table and nowhere else: its
+                    # arithmetic is consistent — at rates other
+                    # than the ones it stamps. Name the break as
+                    # the provenance break it is.
+                    code = "RATE_TABLE_MISMATCH"
+                    assert stamp is not None and batch_table is not None
+                    detail = (
+                        f"figure {key[0]}{where}: the engine proposes "
+                        f"{engine_value}, which is the value "
+                        f"{rate_summary(batch_table)} produces from "
+                        f"source — not the {money(verifier_value)} the "
+                        f"stamped {rate_summary(stamp)} produces. The "
+                        "figure was converted at rates other than the "
+                        "ones its provenance stamps"
+                    )
                 else:
                     detail = (f"figure {key[0]}{where}: the engine proposes "
                               f"{engine_value} but the verifier recomputes "
                               f"{money(verifier_value)} from source")
                 variances.append(Variance(
-                    code="FIGURE_MISMATCH", metric_id=key[0],
+                    code=code, metric_id=key[0],
                     entity_id=key[1], detail=detail,
                 ))
     for (metric_id, entity_id) in engine_by_key:
