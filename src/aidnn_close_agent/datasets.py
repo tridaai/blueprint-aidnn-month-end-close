@@ -642,6 +642,66 @@ RESTATEMENT_AFFECTED: dict[str, tuple[str, str]] = {
     "consolidated_cash": ("376750.00", "369750.00"),
 }
 
+# ---------------------------------------------------------------------------
+# The governed change: definition pack v1.2.0.
+#
+# The candidate takes account 6400 (insurance) back OUT of
+# operating expenses and gives it a metric of its own, with a
+# consolidated line over it — presentation only: operating
+# income cannot move, because the split adds back exactly
+# what it removes. Gold below is derived by hand from the
+# October journals: HLG posts 6,000 of insurance (J-O-H5),
+# HLD posts 4,500 (J-O-D9), HLE posts none — so over October,
+# under v1.2.0 against v1.1.0:
+#
+# - opex falls by exactly those amounts per entity, and the
+#   consolidated line by their sum (both entities book in
+#   USD, so no conversion enters);
+# - operating income rises by the same sum — it subtracts
+#   the smaller opex and nothing else changes;
+# - four figures are born (insurance per entity, and its
+#   consolidated line), none are dropped;
+# - no moved figure reaches the flux materiality bars
+#   (largest |Δ| is 10,500.00 against the 50,000 bar; the
+#   largest |Δ%| is opex@HLG at 9.68% against the 10% bar).
+# ---------------------------------------------------------------------------
+
+V120_CHANGED_METRICS = {
+    "opex", "consolidated_opex", "consolidated_operating_income",
+}
+
+# (metric_id, entity_id) → (value under v1.1.0, value under
+# v1.2.0, delta) — the dry-run's moved list over signed
+# October, stated as literals.
+V120_DRY_RUN_MOVED: dict[tuple[str, str | None], tuple[str, str, str]] = {
+    ("opex", "HLG"): ("62000.00", "56000.00", "-6000.00"),
+    ("opex", "HLD"): ("128700.00", "124200.00", "-4500.00"),
+    ("consolidated_opex", None): ("306060.00", "295560.00", "-10500.00"),
+    ("consolidated_operating_income", None):
+        ("845940.00", "856440.00", "10500.00"),
+}
+
+# (metric_id, entity_id) → value under v1.2.0 — the figures
+# the candidate adds over October. Nothing is dropped.
+V120_DRY_RUN_ADDED: dict[tuple[str, str | None], str] = {
+    ("insurance", "HLG"): "6000.00",
+    ("insurance", "HLD"): "4500.00",
+    ("insurance", "HLE"): "0.00",
+    ("consolidated_insurance", None): "10500.00",
+}
+
+# November under v1.2.0: November's journals are October's
+# journals, so its figures are October's gold with the v1.2.0
+# split applied — the entries below; every other figure keeps
+# its October gold value.
+V120_NOVEMBER_FIGURES: dict[tuple[str, str | None], str] = {
+    ("opex", "HLG"): "56000.00",
+    ("opex", "HLD"): "124200.00",
+    ("consolidated_opex", None): "295560.00",
+    ("consolidated_operating_income", None): "856440.00",
+    **V120_DRY_RUN_ADDED,
+}
+
 # Metrics whose comparative crosses the v1.0.0 → v1.1.0
 # definition change: opex itself (account 6400 joined), what
 # derives from it, and revenue_vs_plan (its plan baseline moved).

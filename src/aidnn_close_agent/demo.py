@@ -39,6 +39,19 @@ in writing (a disposition), the rebuilt pack is presented
 for sign-off with the acceptance on its face and the variance
 standing word for word, and the signed pack carries the item
 into November as an opening item that must clear there.
+
+The fourth act changes the ruler itself. A candidate pack
+v1.2.0 would take insurance premiums out of operating
+expenses and give them their own line. Nobody edits the ruler
+mid-measurement: the candidate's impact is first computed as
+a dry-run over the signed October close — every figure
+recomputed under both versions from October's stamped
+sources — and only then does a named activation make it
+govern November. November's run is created on a service still
+wired to v1.1.0, and the selection rule, not the wiring,
+puts v1.2.0 in charge; the pack states the change on its
+face, and its evidence bundle cites the act and the impact
+behind it.
 """
 
 from __future__ import annotations
@@ -52,8 +65,10 @@ from .connectors import DatasetConnector
 from .datasets import (
     IC_VARIANT_BATCH_ID,
     PERIOD,
+    PERIOD_NOVEMBER,
     PERIOD_OCTOBER,
     RESTATEMENT_BATCH_ID,
+    build_november_world,
     build_october_world,
     build_world,
     october_ic_variant_batch,
@@ -138,8 +153,9 @@ def run_demo() -> CloseService:
     print("Nothing was posted to any ledger. The signed pack is the record.")
     _print_evidence(service, signed)
 
-    _run_october(service)
+    october_service = _run_october(service)
     _run_disposition_act()
+    _run_governance_act(october_service)
     return service
 
 
@@ -163,7 +179,7 @@ def _print_evidence(service: CloseService, signed) -> None:
     print(json.dumps(figure, indent=2).replace("\n", "\n  "))
 
 
-def _run_october(september_service: CloseService) -> None:
+def _run_october(september_service: CloseService) -> CloseService:
     """Act two, over the same store: the restatement lands, the
     definition pack is upgraded, and October closes comparative."""
     store = september_service.store
@@ -185,7 +201,7 @@ def _run_october(september_service: CloseService) -> None:
         connector=september_service.connector,
         objects=september_service.objects, pack_def=pack_v110,
     )
-    print(f"The deployment upgrades the definition pack to v{pack_v110.version} "
+    print(f"October's close runs under definition pack v{pack_v110.version} "
           "(operating expenses now include insurance, account 6400).")
 
     world = build_october_world()
@@ -261,6 +277,7 @@ def _run_october(september_service: CloseService) -> None:
     print(f"Its evidence bundle {record.bundle_id} carries the "
           f"comparatives, the restatement, and the acknowledgement: "
           f"{record.figure_count} figures, sha256 {record.sha256}")
+    return service
 
 
 class _VariantConnector:
@@ -358,6 +375,118 @@ def _run_disposition_act() -> None:
     print(f"Its evidence bundle {record.bundle_id} carries the "
           f"{len(document['dispositions'])} dispositions beside "
           f"the variances they answer for — sha256 {record.sha256}")
+
+
+class _WorldConnector:
+    """Serves one staged world's batches — November's route
+    into act four (the dataset connector stages September,
+    October, and the restatement only)."""
+
+    name = "world"
+
+    def __init__(self, world) -> None:
+        self._batches = {b.batch_id: b for b in world.batches}
+
+    def available(self):
+        return list(self._batches.values())
+
+    def fetch(self, batch_id: str):
+        return self._batches[batch_id]
+
+
+def _run_governance_act(october_service: CloseService) -> None:
+    """Act four, over the main store: a definition change,
+    governed — impact computed first, then a named activation,
+    then a November close the selection rule puts under the
+    new version."""
+    print("\n" + "=" * 72)
+    print("A new ruler, governed: definition pack v1.2.0")
+    service = october_service
+    store = service.store
+    reason = (
+        "Insurance premiums are a board line of their own now; "
+        "they leave operating expenses and stand separately "
+        "from November. Operating income does not move — the "
+        "split is presentation, measured before it governs."
+    )
+    print("\nA candidate pack v1.2.0 sits in the registry: "
+          "account 6400 (insurance) leaves operating expenses "
+          "for its own metric. Activating it on sight is "
+          "refused — the impact must exist first:")
+    try:
+        service.activate_definition_pack(
+            "1.2.0", PERIOD_NOVEMBER, CONTROLLER, reason)
+        print("UNEXPECTED: the activation went through without "
+              "a dry-run.")
+    except GateError as exc:
+        print(f"  ✗ {exc}")
+    record = service.dry_run_definition_change("1.2.0")
+    report = record.report
+    print(f"\nDry-run {record.dry_run_id} — v{report.candidate_version} "
+          f"measured over signed {report.reference_period} (pack "
+          f"{report.reference_pack_id}, signed under "
+          f"v{report.base_version}); digest {record.digest[:16]}…")
+    print(f"  Definitions changed: {', '.join(report.changed_metrics)}")
+    for delta in report.moved:
+        scope = delta.entity_id or "consolidated"
+        print(f"  → {delta.metric_id:<32} {scope:<12} "
+              f"{delta.currency} {delta.base_value:>12} → "
+              f"{delta.candidate_value:>12}  (Δ {delta.delta})")
+    for figure in report.added:
+        scope = figure.entity_id or "consolidated"
+        print(f"  + {figure.metric_id:<32} {scope:<12} "
+              f"{figure.currency} {figure.value:>12}  (new figure)")
+    print(f"  Dropped figures: {len(report.dropped)} · variance "
+          f"families unchanged: "
+          f"{report.variance_families_candidate == report.variance_families_base}"
+          f" · material moves: {report.material_count}")
+    activation = service.activate_definition_pack(
+        "1.2.0", PERIOD_NOVEMBER, CONTROLLER, reason)
+    print(f"\n{activation.activation_id}: {CONTROLLER} activates "
+          f"v{activation.to_version} from {activation.from_period}, "
+          f"citing dry-run {activation.dry_run_id}. Signed periods "
+          "are untouched — September still cites v1.0.0, October "
+          "v1.1.0, forever.")
+    november_world = build_november_world("55000.00")
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    assert pack_v110 is not None
+    november = CloseService(
+        pipeline=PackPipeline(
+            engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+            checkpointer=MemorySaver()),
+        store=store, connector=_WorldConnector(november_world),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    run = november.create_run(PERIOD_NOVEMBER)
+    print(f"\nNovember's run is created on a service still wired "
+          f"to v{pack_v110.version} — and the selection rule "
+          f"assigns v{run.definition_pack_version} "
+          f"({run.audit[-1]['detail']}).")
+    november.ingest(run.run_id,
+                    [b.batch_id for b in november_world.batches])
+    pack = november.build_pack(run.run_id)
+    _print_pack(pack, "November attempt")
+    change = pack.definition_change
+    if change is not None:
+        print(f"\nThe pack states the change on its face: first "
+              f"pack governed by v{change.to_version} (activation "
+              f"{change.activation_id} by {change.actor}); the "
+              f"dry-run behind it found {change.moved_count} "
+              f"figures moved, {change.added_count} added, "
+              f"{change.dropped_count} dropped.")
+    signed = november.sign_off(pack.pack_id, "sign", CONTROLLER,
+                                "first close under v1.2.0; the "
+                                "change is governed and stated")
+    print(f"{signed.pack_id} → {signed.status}.")
+    record = november.generate_evidence(signed.pack_id)
+    data, _ = november.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    section = document["definition_change"]
+    print(f"Its evidence bundle {record.bundle_id} carries the "
+          f"definition change: the activation by "
+          f"{section['activation']['actor']} and the dry-run "
+          f"(digest {section['dry_run']['digest'][:16]}…) it "
+          f"relied on — sha256 {record.sha256}")
 
 
 def main() -> None:
