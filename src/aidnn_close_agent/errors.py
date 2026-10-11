@@ -14,8 +14,15 @@ them to honest HTTP responses instead of stack traces:
   close checklist is a state machine, not a suggestion.
 - :class:`GateError` — a sign-off the pack's state does not
   allow (blocked, stale, already signed, or anonymous).
+- :class:`EvidenceError` — an audit evidence bundle that
+  cannot be honestly generated: the pack is not signed, or a
+  completeness check finds a gap (a figure without its
+  definition or verdict, a stamped source missing from the
+  store, a run that is not closed). The refusal names the gap;
+  a partial bundle is never written.
 - :class:`RunNotFound` / :class:`PackNotFound` /
-  :class:`BatchNotFound` — store misses.
+  :class:`BatchNotFound` / :class:`BundleNotFound` — store
+  misses.
 """
 
 from __future__ import annotations
@@ -47,6 +54,12 @@ class GateError(CloseError):
     status_code = 409
 
 
+class EvidenceError(CloseError):
+    """An evidence bundle that cannot be honestly generated."""
+
+    status_code = 409
+
+
 class RunNotFound(CloseError):
     status_code = 404
 
@@ -56,4 +69,8 @@ class PackNotFound(CloseError):
 
 
 class BatchNotFound(CloseError):
+    status_code = 404
+
+
+class BundleNotFound(CloseError):
     status_code = 404

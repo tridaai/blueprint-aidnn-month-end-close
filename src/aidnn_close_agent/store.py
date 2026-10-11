@@ -1,4 +1,5 @@
-"""The close store: source batches, runs, and board packs.
+"""The close store: source batches, runs, board packs, and the
+evidence-bundle index.
 
 Two implementations of one small surface, because the deployment
 gets PostgreSQL and the test suite gets a double with identical
@@ -6,7 +7,8 @@ behaviour:
 
 - :class:`PostgresCloseStore` — the production store (JSONB
   payloads in ``source_batches`` / ``close_runs`` /
-  ``board_packs``; migration ``0001``).
+  ``board_packs`` / ``evidence_bundles``; migrations ``0001``
+  and ``0002``).
 - :class:`InMemoryCloseStore` — the double. When it is live,
   ``/readiness`` says so: nothing persists past the process.
 
@@ -21,7 +23,7 @@ import json
 import threading
 
 from .db import database_url, ensure_migrated
-from .schemas import BoardPack, CloseRun, SourceBatch
+from .schemas import BoardPack, CloseRun, EvidenceBundle, SourceBatch
 
 
 class InMemoryCloseStore:
@@ -31,6 +33,7 @@ class InMemoryCloseStore:
         self._batches: dict[str, SourceBatch] = {}
         self._runs: dict[str, CloseRun] = {}
         self._packs: dict[str, BoardPack] = {}
+        self._bundles: dict[str, EvidenceBundle] = {}
         self._order: list[str] = []
         self._lock = threading.Lock()
 
@@ -74,6 +77,21 @@ class InMemoryCloseStore:
         if run_id:
             packs = [p for p in packs if p.run_id == run_id]
         return packs
+
+    # -- evidence bundles ----------------------------------------
+    def save_bundle(self, bundle: EvidenceBundle) -> EvidenceBundle:
+        with self._lock:
+            self._bundles[bundle.bundle_id] = bundle
+        return bundle
+
+    def get_bundle(self, bundle_id: str) -> EvidenceBundle | None:
+        return self._bundles.get(bundle_id)
+
+    def list_bundles(self, pack_id: str | None = None) -> list[EvidenceBundle]:
+        bundles = list(self._bundles.values())
+        if pack_id:
+            bundles = [b for b in bundles if b.pack_id == pack_id]
+        return bundles
 
 
 class PostgresCloseStore:
@@ -163,6 +181,22 @@ class PostgresCloseStore:
         if run_id:
             return self._list("board_packs", BoardPack, "run_id = %s", (run_id,))
         return self._list("board_packs", BoardPack)
+
+    # -- evidence bundles ----------------------------------------
+    def save_bundle(self, bundle: EvidenceBundle) -> EvidenceBundle:
+        self._save("evidence_bundles", "bundle_id", bundle.bundle_id, bundle,
+                   {"pack_id": bundle.pack_id, "period": bundle.period})
+        return bundle
+
+    def get_bundle(self, bundle_id: str) -> EvidenceBundle | None:
+        return self._get("evidence_bundles", "bundle_id", bundle_id,
+                         EvidenceBundle)
+
+    def list_bundles(self, pack_id: str | None = None) -> list[EvidenceBundle]:
+        if pack_id:
+            return self._list("evidence_bundles", EvidenceBundle,
+                              "pack_id = %s", (pack_id,))
+        return self._list("evidence_bundles", EvidenceBundle)
 
 
 def default_store() -> InMemoryCloseStore | PostgresCloseStore:

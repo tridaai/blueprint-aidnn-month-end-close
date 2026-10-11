@@ -21,7 +21,12 @@ service owns the close discipline the graph does not:
   :mod:`.comparatives`); a pack carrying an unacknowledged
   restatement cannot be signed, and a restatement batch is
   received outside any run, because a signed period's run is
-  closed and its record is history.
+  closed and its record is history;
+- **the audit evidence bundle is a projection** — generated
+  only for a signed pack, assembled from stored records by
+  :mod:`.evidence`, checked for completeness before anything
+  is written, and stored in the object store under a digest
+  the bundle record carries.
 
 Nothing here posts to a ledger, files a return, or moves money:
 the signed pack is the end of the line, by design.
@@ -29,6 +34,7 @@ the signed pack is the end of the line, by design.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,10 +42,12 @@ from pathlib import Path
 from langgraph.types import Command
 
 from . import comparatives as comparatives_module
+from . import evidence as evidence_module
 from . import guardrails
 from .definitions import DefinitionPack
 from .errors import (
     BatchNotFound,
+    BundleNotFound,
     ChecklistIncomplete,
     GateError,
     PackNotFound,
@@ -48,7 +56,13 @@ from .errors import (
 from .graph import PackPipeline
 from .marts import build_marts, slot_key
 from .ports import ConnectorPort, ObjectStorePort
-from .schemas import Acknowledgement, BoardPack, CloseRun, SourceBatch
+from .schemas import (
+    Acknowledgement,
+    BoardPack,
+    CloseRun,
+    EvidenceBundle,
+    SourceBatch,
+)
 
 log = logging.getLogger(__name__)
 
@@ -327,3 +341,84 @@ class CloseService:
         pack.updated_at = _now()
         self.store.save_pack(pack)
         return pack
+
+    # -- audit evidence -------------------------------------------------
+
+    def generate_evidence(self, pack_id: str) -> EvidenceBundle:
+        """Generate (or return) the audit evidence bundle for a
+        signed pack.
+
+        Generation is gated and checked in
+        :func:`evidence.assemble_bundle`: only a SIGNED_OFF pack
+        gets a bundle, and any completeness gap refuses with the
+        gap named, before anything is written. The bundle is a
+        pure projection of stored records, so regeneration is
+        byte-identical by construction; when a bundle already
+        exists and its stored bytes still hash to the recorded
+        digest, it is returned as-is — the record, keys, and
+        bytes are one artifact and are never quietly rewritten.
+        """
+        pack = self.get_pack(pack_id)
+        document = evidence_module.assemble_bundle(self, pack)
+        json_bytes = evidence_module.canonical_json(document)
+        digest = hashlib.sha256(json_bytes).hexdigest()
+        bundle_id = evidence_module.bundle_id_for(pack.pack_id)
+        existing = self.store.get_bundle(bundle_id)
+        if existing is not None and existing.sha256 == digest \
+                and self.objects.exists(existing.json_key):
+            stored = self.objects.get(existing.json_key)
+            if hashlib.sha256(stored).hexdigest() == existing.sha256:
+                return existing
+        json_key, text_key = evidence_module.bundle_keys(pack)
+        self.objects.put(json_key, json_bytes, "application/json")
+        self.objects.put(
+            text_key,
+            evidence_module.render_text(document).encode("utf-8"),
+            "text/plain",
+        )
+        record = EvidenceBundle(
+            bundle_id=bundle_id,
+            pack_id=pack.pack_id,
+            run_id=pack.run_id,
+            period=pack.period,
+            json_key=json_key,
+            text_key=text_key,
+            sha256=digest,
+            figure_count=len(document["figures"]),
+            manifest_count=len(document["source_manifest"]),
+            generated_at=_now(),
+        )
+        self.store.save_bundle(record)
+        log.info(
+            "evidence bundle generated",
+            extra={"pack_id": pack.pack_id, "bundle_id": bundle_id,
+                   "sha256": digest},
+        )
+        return record
+
+    def get_evidence(self, pack_id: str) -> EvidenceBundle:
+        """The bundle record for a pack, or a named miss —
+        generation is an explicit act, never a read side effect."""
+        self.get_pack(pack_id)  # PackNotFound before BundleNotFound
+        bundles = self.store.list_bundles(pack_id=pack_id)
+        if not bundles:
+            raise BundleNotFound(
+                f"no evidence bundle has been generated for pack "
+                f"{pack_id} — generate it first"
+            )
+        return bundles[0]
+
+    def evidence_download(self, pack_id: str, fmt: str) -> tuple[bytes, str]:
+        """The stored bundle bytes for a pack: ``(bytes,
+        content_type)``. Served from the object store by the
+        record's key — what downloads is what the digest on the
+        record was taken over."""
+        record = self.get_evidence(pack_id)
+        if fmt == "json":
+            return self.objects.get(record.json_key), "application/json"
+        if fmt == "txt":
+            return self.objects.get(record.text_key), "text/plain; charset=utf-8"
+        raise BundleNotFound(
+            f"evidence format {fmt!r} does not exist — the bundle is "
+            "stored as 'json' and 'txt'"
+        )

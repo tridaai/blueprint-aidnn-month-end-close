@@ -225,6 +225,29 @@ class BoardPack(BaseModel):
     updated_at: str = ""
 
 
+class EvidenceBundle(BaseModel):
+    """The record of one generated audit evidence bundle.
+
+    The bundle *bytes* live in the object store under
+    ``json_key`` / ``text_key``; this record is the index entry
+    that names them, carries the digest an auditor (or a test)
+    checks the bytes against, and remembers when generation
+    happened. Generation metadata lives here, on the record —
+    never inside the bundle bytes, which are a pure projection
+    of the signed pack and regenerate byte-identically."""
+
+    bundle_id: str
+    pack_id: str
+    run_id: str
+    period: str
+    json_key: str
+    text_key: str
+    sha256: str  # of the JSON bundle bytes, hex
+    figure_count: int
+    manifest_count: int
+    generated_at: str = ""
+
+
 class CloseRun(BaseModel):
     """One period's close, from first extract to signed pack."""
 
