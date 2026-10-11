@@ -1,0 +1,205 @@
+{
+  "batch_id": "O-HLD-GL-v1",
+  "kind": "gl",
+  "entity_id": "HLD",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [
+    {
+      "journal_id": "J-O-D1",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "720000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D2",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Product sales",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "905000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4000",
+          "debit": "0.00",
+          "credit": "905000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D3",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Services billed",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "150000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4100",
+          "debit": "0.00",
+          "credit": "150000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D4",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Cost of goods sold",
+      "lines": [
+        {
+          "account": "5000",
+          "debit": "455000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "455000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D5",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Payroll",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "99000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "99000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D6",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Facilities rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "18000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "18000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D7",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Other operating costs",
+      "lines": [
+        {
+          "account": "6300",
+          "debit": "7200.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "7200.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D8",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Intercompany sale to HLE",
+      "lines": [
+        {
+          "account": "1300",
+          "debit": "61600.00",
+          "credit": "0.00",
+          "ic_counterparty": "HLE",
+          "memo": ""
+        },
+        {
+          "account": "4200",
+          "debit": "0.00",
+          "credit": "61600.00",
+          "ic_counterparty": "HLE",
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-D9",
+      "entity_id": "HLD",
+      "date": "2026-10-31",
+      "memo": "Warehouse insurance premium",
+      "lines": [
+        {
+          "account": "6400",
+          "debit": "4500.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "4500.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "541ed6b5d109bc3fd91a75418fae2d1013cd71527f3bd57422f88297046a9712"
+}

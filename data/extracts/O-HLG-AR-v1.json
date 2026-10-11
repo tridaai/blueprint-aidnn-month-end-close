@@ -1,0 +1,19 @@
+{
+  "batch_id": "O-HLG-AR-v1",
+  "kind": "ar",
+  "entity_id": "HLG",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [],
+  "ar_billings": [
+    {
+      "entity_id": "HLG",
+      "billings": "132000.00",
+      "currency": "USD"
+    }
+  ],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "eb1d2218b101707b03914b524b1303fbe988e92da6af2aa59669e9c5c502f3b5"
+}

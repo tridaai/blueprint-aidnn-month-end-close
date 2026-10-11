@@ -39,6 +39,12 @@ The late batches (v2 extracts + revised rates) are the second
 half of the story: they supersede the first extracts, the first
 pack goes STALE, and the rebuilt pack verifies clean against
 the gold figures below.
+
+Below the September world, this module also builds **October**
+(:func:`build_october_world`) — the comparative month, closing
+under definition pack v1.1.0 — and September's post-sign-off
+**restatement** (:func:`restatement_batch`, with its expected
+effects stated as literals in ``RESTATEMENT_AFFECTED``).
 """
 
 from __future__ import annotations
@@ -68,8 +74,9 @@ def _line(account: str, debit: str = "0.00", credit: str = "0.00",
     )
 
 
-def _journal(jid: str, entity: str, lines: list[JournalLine], memo: str = "") -> Journal:
-    return Journal(journal_id=jid, entity_id=entity, date="2026-09-30",
+def _journal(jid: str, entity: str, lines: list[JournalLine], memo: str = "",
+             date: str = "2026-09-30") -> Journal:
+    return Journal(journal_id=jid, entity_id=entity, date=date,
                    memo=memo, lines=lines)
 
 
@@ -286,3 +293,223 @@ def world_json() -> str:
         },
         indent=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# The second month: October 2026, and September's restatement.
+#
+# October closes under definition pack v1.1.0: operating expenses
+# now include insurance (account 6400 — HLG and HLD both post
+# October insurance premiums there), and the revenue plan moved.
+# October's own extracts are clean — the month's drama is not in
+# its sources but in its comparatives:
+#
+# - every October figure is presented against September's SIGNED
+#   figures, cited from the signed pack;
+# - the opex family compares across the v1.0.0 → v1.1.0
+#   definition change, and the pack must say so;
+# - September's HLG extract is RESTATED after sign-off (below):
+#   a head-office payroll accrual was understated by 7,000. The
+#   signed September pack never changes; October's pack must
+#   detect that September's sources no longer reproduce it, name
+#   the figures it moved, and refuse sign-off until a controller
+#   acknowledges the restatement.
+# ---------------------------------------------------------------------------
+
+PERIOD_OCTOBER = "2026-10"
+_OCT = "2026-10-31"
+
+
+def _hlg_journals_october() -> list[Journal]:
+    return [
+        _journal("J-O-H1", "HLG", [_line("1000", debit="260000.00")],
+                 memo="Opening cash balance", date=_OCT),
+        _journal("J-O-H2", "HLG", [_line("1100", debit="132000.00"),
+                                    _line("4100", credit="132000.00")],
+                 memo="Group services billed", date=_OCT),
+        _journal("J-O-H3", "HLG", [_line("6100", debit="47000.00"),
+                                    _line("1000", credit="47000.00")],
+                 memo="Head-office payroll", date=_OCT),
+        _journal("J-O-H4", "HLG", [_line("6200", debit="9000.00"),
+                                    _line("1000", credit="9000.00")],
+                 memo="Head-office rent", date=_OCT),
+        _journal("J-O-H5", "HLG", [_line("6400", debit="6000.00"),
+                                    _line("1000", credit="6000.00")],
+                 memo="Group insurance premium (account 6400 — inside "
+                      "opex only under pack v1.1.0)", date=_OCT),
+    ]
+
+
+def _hld_journals_october() -> list[Journal]:
+    return [
+        _journal("J-O-D1", "HLD", [_line("1000", debit="720000.00")],
+                 memo="Opening cash balance", date=_OCT),
+        _journal("J-O-D2", "HLD", [_line("1100", debit="905000.00"),
+                                    _line("4000", credit="905000.00")],
+                 memo="Product sales", date=_OCT),
+        _journal("J-O-D3", "HLD", [_line("1100", debit="150000.00"),
+                                    _line("4100", credit="150000.00")],
+                 memo="Services billed", date=_OCT),
+        _journal("J-O-D4", "HLD", [_line("5000", debit="455000.00"),
+                                    _line("1000", credit="455000.00")],
+                 memo="Cost of goods sold", date=_OCT),
+        _journal("J-O-D5", "HLD", [_line("6100", debit="99000.00"),
+                                    _line("1000", credit="99000.00")],
+                 memo="Payroll", date=_OCT),
+        _journal("J-O-D6", "HLD", [_line("6200", debit="18000.00"),
+                                    _line("1000", credit="18000.00")],
+                 memo="Facilities rent", date=_OCT),
+        _journal("J-O-D7", "HLD", [_line("6300", debit="7200.00"),
+                                    _line("1000", credit="7200.00")],
+                 memo="Other operating costs", date=_OCT),
+        _journal("J-O-D8", "HLD", [_line("1300", debit="61600.00", ic="HLE"),
+                                    _line("4200", credit="61600.00", ic="HLE")],
+                 memo="Intercompany sale to HLE", date=_OCT),
+        _journal("J-O-D9", "HLD", [_line("6400", debit="4500.00"),
+                                    _line("1000", credit="4500.00")],
+                 memo="Warehouse insurance premium", date=_OCT),
+    ]
+
+
+def _hle_journals_october() -> list[Journal]:
+    return [
+        _journal("J-O-E1", "HLE", [_line("1000", debit="420000.00")],
+                 memo="Opening cash balance", date=_OCT),
+        _journal("J-O-E2", "HLE", [_line("1100", debit="545000.00"),
+                                    _line("4000", credit="545000.00")],
+                 memo="Product sales", date=_OCT),
+        _journal("J-O-E3", "HLE", [_line("1100", debit="102000.00"),
+                                    _line("4100", credit="102000.00")],
+                 memo="Services billing", date=_OCT),
+        _journal("J-O-E4", "HLE", [_line("5000", debit="272000.00"),
+                                    _line("1000", credit="272000.00")],
+                 memo="Cost of goods sold", date=_OCT),
+        _journal("J-O-E5", "HLE", [_line("6100", debit="91000.00"),
+                                    _line("1000", credit="91000.00")],
+                 memo="Payroll", date=_OCT),
+        _journal("J-O-E6", "HLE", [_line("6200", debit="12000.00"),
+                                    _line("1000", credit="12000.00")],
+                 memo="Rent", date=_OCT),
+        _journal("J-O-E7", "HLE", [_line("5000", debit="55000.00", ic="HLD"),
+                                    _line("2300", credit="55000.00", ic="HLD")],
+                 memo="Intercompany purchase from HLD (€55,000 = $61,600 "
+                      "at the October rate of 1.12)", date=_OCT),
+    ]
+
+
+def build_october_world() -> World:
+    """October 2026: the same group, a clean set of extracts,
+    gold stated as literals exactly as for September."""
+    september = build_world()
+    batches = [
+        _batch("O-HLG-GL-v1", "gl", "HLG", 1, None, "initial",
+               journals=_hlg_journals_october()),
+        _batch("O-HLD-GL-v1", "gl", "HLD", 1, None, "initial",
+               journals=_hld_journals_october()),
+        _batch("O-HLE-GL-v1", "gl", "HLE", 1, None, "initial",
+               journals=_hle_journals_october()),
+        _batch("O-HLG-AR-v1", "ar", "HLG", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLG", billings="132000.00",
+                                      currency="USD")]),
+        _batch("O-HLD-AR-v1", "ar", "HLD", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLD", billings="1055000.00",
+                                      currency="USD")]),
+        _batch("O-HLE-AR-v1", "ar", "HLE", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLE", billings="647000.00",
+                                      currency="EUR")]),
+        _batch("O-FX-v1", "fx", None, 1, None, "initial",
+               rate_table=RateTable(version=3, reporting_currency="USD",
+                                    rates={"EUR": "1.12"})),
+        _batch("O-CRM-v1", "crm", None, 1, None, "initial",
+               opportunities=[
+                   Opportunity(name="Northgate Retail — frame agreement",
+                               amount="950000.00"),
+                   Opportunity(name="Alder Health — distribution RFP",
+                               amount="700000.00"),
+                   Opportunity(name="Pinecrest Foods — regional rollout",
+                               amount="400000.00"),
+               ]),
+    ]
+    gold = {
+        # Per-entity, entity currency, under pack v1.1.0 (opex
+        # includes account 6400).
+        "revenue_external@HLG": "132000.00",
+        "revenue_external@HLD": "1055000.00",
+        "revenue_external@HLE": "647000.00",
+        "revenue_ic@HLG": "0.00",
+        "revenue_ic@HLD": "61600.00",
+        "revenue_ic@HLE": "0.00",
+        "cogs_external@HLG": "0.00",
+        "cogs_external@HLD": "455000.00",
+        "cogs_external@HLE": "272000.00",
+        "opex@HLG": "62000.00",
+        "opex@HLD": "128700.00",
+        "opex@HLE": "103000.00",
+        "cash@HLG": "198000.00",
+        "cash@HLD": "136300.00",
+        "cash@HLE": "45000.00",
+        # Consolidated / group, USD at the October rate (EUR 1.12).
+        "consolidated_revenue": "1911640.00",
+        "consolidated_ic_revenue": "61600.00",
+        "consolidated_gross_revenue": "1973240.00",
+        "eliminations_total": "61600.00",
+        "consolidated_cogs": "759640.00",
+        "consolidated_opex": "306060.00",
+        "consolidated_operating_income": "845940.00",
+        "consolidated_cash": "384700.00",
+        "pipeline_open": "2050000.00",
+        "revenue_vs_plan": "61640.00",
+    }
+    return World(
+        entities=september.entities,
+        batches=batches,
+        gold_figures=gold,
+        phase_a_variance_codes=[],  # October's extracts are clean
+    )
+
+
+RESTATEMENT_BATCH_ID = "B-HLG-GL-v2"
+
+
+def restatement_batch() -> SourceBatch:
+    """September, restated: after the September pack was signed,
+    HLG's accountants find the head-office payroll accrual
+    (J-H3) was booked at 45,000 against the correct 52,000. The
+    corrected extract supersedes B-HLG-GL-v1. It changes nothing
+    about the signed pack — it makes five of its figures
+    irreproducible from current sources, which is exactly what
+    October's comparative layer must detect and name."""
+    journals = []
+    for journal in _hlg_journals():
+        if journal.journal_id == "J-H3":
+            journal = _journal(
+                "J-H3", "HLG",
+                [_line("6100", debit="52000.00"),
+                 _line("1000", credit="52000.00")],
+                memo="Head-office payroll — RESTATED: the September "
+                     "accrual was understated; correct amount 52,000",
+            )
+        journals.append(journal)
+    return _batch(RESTATEMENT_BATCH_ID, "gl", "HLG", 2, "B-HLG-GL-v1",
+                  "restatement", journals=journals)
+
+
+# What the restated September sources produce, under the pack
+# version that signed September (v1.0.0) — gold for the eval's
+# restatement gate, keyed like the other gold dicts.
+RESTATEMENT_AFFECTED: dict[str, tuple[str, str]] = {
+    # key → (signed value, recomputed value under restated sources)
+    "opex@HLG": ("54000.00", "61000.00"),
+    "cash@HLG": ("196000.00", "189000.00"),
+    "consolidated_opex": ("297250.00", "304250.00"),
+    "consolidated_operating_income": ("783250.00", "776250.00"),
+    "consolidated_cash": ("376750.00", "369750.00"),
+}
+
+# Metrics whose comparative crosses the v1.0.0 → v1.1.0
+# definition change: opex itself (account 6400 joined), what
+# derives from it, and revenue_vs_plan (its plan baseline moved).
+DEFINITION_CHANGED_METRICS = {
+    "opex", "consolidated_opex", "consolidated_operating_income",
+    "revenue_vs_plan",
+}

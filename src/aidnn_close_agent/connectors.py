@@ -18,22 +18,29 @@ hash — survives independently of the run records.
 
 from __future__ import annotations
 
-from .datasets import build_world
+from .datasets import build_october_world, build_world, restatement_batch
 from .errors import BatchNotFound
 from .schemas import SourceBatch
 
 
 class DatasetConnector:
-    """The bundled connector: the synthetic Harborlight extracts."""
+    """The bundled connector: the synthetic Harborlight extracts
+    — September's close, October's close, and the restated
+    September extract that arrives after September signed."""
 
     name = "dataset"
 
     def __init__(self) -> None:
         self._world = build_world()
-        self._by_id = {b.batch_id: b for b in self._world.batches}
+        batches = (
+            list(self._world.batches)
+            + list(build_october_world().batches)
+            + [restatement_batch()]
+        )
+        self._by_id = {b.batch_id: b for b in batches}
 
     def available(self) -> list[SourceBatch]:
-        return list(self._world.batches)
+        return list(self._by_id.values())
 
     def fetch(self, batch_id: str) -> SourceBatch:
         batch = self._by_id.get(batch_id)

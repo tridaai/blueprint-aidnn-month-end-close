@@ -1,0 +1,19 @@
+{
+  "batch_id": "O-FX-v1",
+  "kind": "fx",
+  "entity_id": null,
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [],
+  "ar_billings": [],
+  "rate_table": {
+    "version": 3,
+    "reporting_currency": "USD",
+    "rates": {
+      "EUR": "1.12"
+    }
+  },
+  "opportunities": [],
+  "sha256": "d968fe74213ac23d325c94821ce81e123a8c905dcf1cbb611fd1710f8b39b747"
+}

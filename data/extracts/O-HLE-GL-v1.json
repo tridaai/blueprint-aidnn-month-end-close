@@ -1,0 +1,161 @@
+{
+  "batch_id": "O-HLE-GL-v1",
+  "kind": "gl",
+  "entity_id": "HLE",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [
+    {
+      "journal_id": "J-O-E1",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "420000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E2",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Product sales",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "545000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4000",
+          "debit": "0.00",
+          "credit": "545000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E3",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Services billing",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "102000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4100",
+          "debit": "0.00",
+          "credit": "102000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E4",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Cost of goods sold",
+      "lines": [
+        {
+          "account": "5000",
+          "debit": "272000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "272000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E5",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Payroll",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "91000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "91000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E6",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "12000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "12000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-E7",
+      "entity_id": "HLE",
+      "date": "2026-10-31",
+      "memo": "Intercompany purchase from HLD (€55,000 = $61,600 at the October rate of 1.12)",
+      "lines": [
+        {
+          "account": "5000",
+          "debit": "55000.00",
+          "credit": "0.00",
+          "ic_counterparty": "HLD",
+          "memo": ""
+        },
+        {
+          "account": "2300",
+          "debit": "0.00",
+          "credit": "55000.00",
+          "ic_counterparty": "HLD",
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "37385fae67f7bed2ba6d623683afc0a8ad8f9349ba450fa54aa964f39f7291ca"
+}

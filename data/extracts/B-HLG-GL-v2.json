@@ -1,0 +1,95 @@
+{
+  "batch_id": "B-HLG-GL-v2",
+  "kind": "gl",
+  "entity_id": "HLG",
+  "version": 2,
+  "supersedes": "B-HLG-GL-v1",
+  "phase": "restatement",
+  "journals": [
+    {
+      "journal_id": "J-H1",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "250000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H2",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Group services billed",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "120000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4100",
+          "debit": "0.00",
+          "credit": "120000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H3",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Head-office payroll — RESTATED: the September accrual was understated; correct amount 52,000",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "52000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "52000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H4",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Head-office rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "9000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "9000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "cdf7364339323745f0bc2d244008fea2ae10e27a92d16883d837338949d62ffc"
+}

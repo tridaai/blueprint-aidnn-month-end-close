@@ -1,0 +1,117 @@
+{
+  "batch_id": "O-HLG-GL-v1",
+  "kind": "gl",
+  "entity_id": "HLG",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [
+    {
+      "journal_id": "J-O-H1",
+      "entity_id": "HLG",
+      "date": "2026-10-31",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "260000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-H2",
+      "entity_id": "HLG",
+      "date": "2026-10-31",
+      "memo": "Group services billed",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "132000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4100",
+          "debit": "0.00",
+          "credit": "132000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-H3",
+      "entity_id": "HLG",
+      "date": "2026-10-31",
+      "memo": "Head-office payroll",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "47000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "47000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-H4",
+      "entity_id": "HLG",
+      "date": "2026-10-31",
+      "memo": "Head-office rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "9000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "9000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-O-H5",
+      "entity_id": "HLG",
+      "date": "2026-10-31",
+      "memo": "Group insurance premium (account 6400 — inside opex only under pack v1.1.0)",
+      "lines": [
+        {
+          "account": "6400",
+          "debit": "6000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "6000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "8437afa5757bdbe7a7fce0089197153ba7d3ada0505b0f9126c39f07bda48402"
+}

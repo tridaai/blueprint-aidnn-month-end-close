@@ -16,14 +16,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aidnn_close_agent.datasets import build_world  # noqa: E402
+from aidnn_close_agent.datasets import (  # noqa: E402
+    build_october_world,
+    build_world,
+    restatement_batch,
+)
 
 
 def main() -> int:
     out_dir = Path(__file__).resolve().parent / "extracts"
     out_dir.mkdir(parents=True, exist_ok=True)
-    world = build_world()
-    for batch in world.batches:
+    batches = (
+        list(build_world().batches)
+        + list(build_october_world().batches)
+        + [restatement_batch()]
+    )
+    for batch in batches:
         path = out_dir / f"{batch.batch_id}.json"
         path.write_text(batch.model_dump_json(indent=2), encoding="utf-8")
         print(f"wrote {path.name} ({batch.kind}, "
