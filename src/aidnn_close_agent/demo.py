@@ -18,9 +18,16 @@ September's *signed* figures, flags the comparisons that cross
 the definition change, detects the restatement by name — and
 its signature is held until the controller acknowledges the
 restatement on the record.
+
+Each signed pack then generates its audit evidence bundle —
+the projection an external auditor re-performs from: figures
+with their definitions and verdicts, the source manifest with
+its recorded hashes, comparatives, restatement, sign-off.
 """
 
 from __future__ import annotations
+
+import json
 
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -101,9 +108,30 @@ def run_demo() -> CloseService:
                                "figures verified; variances cleared")
     print(f"\n{signed.pack_id} → {signed.status} by {CONTROLLER}.")
     print("Nothing was posted to any ledger. The signed pack is the record.")
+    _print_evidence(service, signed)
 
     _run_october(service)
     return service
+
+
+def _print_evidence(service: CloseService, signed) -> None:
+    """Generate the signed pack's audit evidence bundle and show
+    what an auditor receives: the digest, the counts, and one
+    figure's full evidence entry."""
+    record = service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    print(f"\nAudit evidence bundle {record.bundle_id}: "
+          f"{record.figure_count} figures with definitions and "
+          f"verdicts, {record.manifest_count} source extracts in "
+          f"the manifest.\n  stored at {record.json_key}\n"
+          f"  sha256 {record.sha256}")
+    figure = next(
+        f for f in document["figures"]
+        if f["metric_id"] == "consolidated_revenue"
+    )
+    print("  one figure's evidence entry:")
+    print(json.dumps(figure, indent=2).replace("\n", "\n  "))
 
 
 def _run_october(september_service: CloseService) -> None:
@@ -185,6 +213,10 @@ def _run_october(september_service: CloseService) -> None:
                               "pack; restatement acknowledged")
     print(f"{signed.pack_id} → {signed.status}. September's signed pack "
           "is byte-for-byte the record it was.")
+    record = service.generate_evidence(signed.pack_id)
+    print(f"Its evidence bundle {record.bundle_id} carries the "
+          f"comparatives, the restatement, and the acknowledgement: "
+          f"{record.figure_count} figures, sha256 {record.sha256}")
 
 
 def main() -> None:

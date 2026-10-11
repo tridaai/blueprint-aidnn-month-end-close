@@ -167,6 +167,32 @@ async function showRun(runId, runs) {
     btn.addEventListener("click", () => decide(btn.dataset.sign, btn.dataset.pack)));
   document.querySelectorAll("[data-ack]").forEach(btn =>
     btn.addEventListener("click", () => ackRestatement(btn.dataset.ack)));
+  document.querySelectorAll("[data-evidence]").forEach(btn =>
+    btn.addEventListener("click", () => generateEvidence(btn.dataset.evidence)));
+  if (run.pack_ids) run.pack_ids.forEach(loadEvidence);
+}
+
+async function loadEvidence(packId) {
+  const slot = $("evidence-" + packId);
+  if (!slot) return;
+  try {
+    const bundle = await api(`/packs/${packId}/evidence`);
+    slot.innerHTML = `Bundle ${bundle.bundle_id} — ${bundle.figure_count} figures, ${bundle.manifest_count} source extracts · sha256 ${bundle.sha256}<br>
+      <a href="/packs/${packId}/evidence/download?format=json">Download JSON</a> ·
+      <a href="/packs/${packId}/evidence/download?format=txt">Download text</a>`;
+  } catch (e) {
+    slot.textContent = "No bundle generated yet — generation is refused for anything but a signed pack, and checked for completeness before anything is written.";
+  }
+}
+
+async function generateEvidence(packId) {
+  try {
+    await api(`/packs/${packId}/evidence`, {method: "POST"});
+    await loadEvidence(packId);
+  } catch (e) {
+    const slot = $("evidence-error-" + packId);
+    if (slot) slot.textContent = e.message;
+  }
 }
 
 function packHtml(pack) {
@@ -187,6 +213,15 @@ function packHtml(pack) {
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
   if (pack.decision)
     html += `<p class="note" style="margin-top:10px;">Controller: ${pack.decision.decision} by ${pack.decision.actor}${pack.decision.reason ? " — " + pack.decision.reason : ""}</p>`;
+  if (pack.status === "SIGNED_OFF") {
+    html += `<h2 style="margin-top:16px;">Audit evidence</h2>
+      <div id="evidence-${pack.pack_id}" class="note">Checking for a generated bundle…</div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="secondary" data-evidence="${pack.pack_id}">Generate evidence bundle</button>
+      </div>
+      <p class="note">The bundle is a projection of the stored record — every figure with its definition and verifier verdict, the source manifest with its recorded hashes, comparatives, and the sign-off. It regenerates byte-identically; the digest is the check.</p>
+      <p class="note" id="evidence-error-${pack.pack_id}"></p>`;
+  }
   if (pack.status === "AWAITING_CONTROLLER") {
     html += `<div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
       <input id="actor-${pack.pack_id}" placeholder="Controller name (required)">

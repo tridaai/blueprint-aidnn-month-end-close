@@ -18,7 +18,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+)
 from pydantic import BaseModel
 
 from . import db
@@ -221,6 +226,30 @@ def create_app(service: CloseService | None = None) -> FastAPI:
         pack = svc().acknowledge_restatement(pack_id, request.actor,
                                              request.note)
         return pack.model_dump()
+
+    @app.post("/packs/{pack_id}/evidence", status_code=201)
+    def generate_evidence(pack_id: str) -> dict:
+        """Generate the audit evidence bundle for a signed pack.
+        Refused (409, state named) for any pack that is not
+        SIGNED_OFF, and for any completeness gap the assembly
+        finds. Idempotent: a pack regenerates the byte-identical
+        bundle and the same record."""
+        return svc().generate_evidence(pack_id).model_dump()
+
+    @app.get("/packs/{pack_id}/evidence")
+    def get_evidence(pack_id: str) -> dict:
+        return svc().get_evidence(pack_id).model_dump()
+
+    @app.get("/packs/{pack_id}/evidence/download")
+    def download_evidence(pack_id: str, format: str = "json") -> Response:
+        data, content_type = svc().evidence_download(pack_id, format)
+        filename = f"evidence-{pack_id}.{format}"
+        return Response(
+            content=data, media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            },
+        )
 
     return app
 

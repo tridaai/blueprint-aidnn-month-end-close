@@ -62,6 +62,13 @@ def main(argv: list[str] | None = None) -> int:
     p_ack.add_argument("pack_id")
     p_ack.add_argument("--actor", required=True)
     p_ack.add_argument("--note", required=True)
+    p_evidence = sub.add_parser(
+        "evidence",
+        help="generate a signed pack's audit evidence bundle "
+             "(or print a stored rendering with --download)")
+    p_evidence.add_argument("pack_id")
+    p_evidence.add_argument("--download", choices=["json", "txt"],
+                            default=None)
     sub.add_parser("runs", help="list all close runs as JSON")
     args = parser.parse_args(argv)
 
@@ -86,6 +93,14 @@ def main(argv: list[str] | None = None) -> int:
             pack = service.acknowledge_restatement(args.pack_id, args.actor,
                                                    args.note)
             print(pack.model_dump_json(indent=2))
+        elif args.command == "evidence":
+            record = service.generate_evidence(args.pack_id)
+            if args.download:
+                data, _ = service.evidence_download(args.pack_id,
+                                                    args.download)
+                sys.stdout.write(data.decode("utf-8"))
+            else:
+                print(record.model_dump_json(indent=2))
         elif args.command == "runs":
             print(json.dumps([r.model_dump() for r in service.list_runs()],
                              indent=2))
