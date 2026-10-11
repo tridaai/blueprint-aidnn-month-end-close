@@ -129,6 +129,11 @@ def build_marts(batches: list[SourceBatch], pack: DefinitionPack) -> MartSet:
         elif batch.kind == "fx" and batch.rate_table is not None:
             marts.rate_table = batch.rate_table
             versions.fx_version = batch.rate_table.version
+            # The stamp carries the table itself, not only its
+            # version: the rates are part of what produced every
+            # converted figure, so they are part of its
+            # provenance (see SourceVersions.fx_table).
+            versions.fx_table = batch.rate_table
         elif batch.kind == "crm":
             marts.opportunities.extend(batch.opportunities)
 

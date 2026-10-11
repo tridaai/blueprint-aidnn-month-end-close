@@ -96,6 +96,17 @@ class SourceVersions(BaseModel):
 
     batches: dict[str, int] = Field(default_factory=dict)  # batch_id → version
     fx_version: int = 0
+    # The rate table itself, as used — not just its version
+    # number. A version is a claim; the table is the evidence:
+    # with the rates on the stamp, every converted figure's
+    # provenance names the rate that was applied to it, the
+    # verifier can recompute at the stamped rates rather than
+    # at whatever table is current when it runs, and a later
+    # period can see that the EUR rate moved, not merely that
+    # the table's version did. ``None`` on packs and figures
+    # stamped before rate tables were carried on the stamp —
+    # the absence reads as absence, and is never backfilled.
+    fx_table: RateTable | None = None
 
 
 class Figure(BaseModel):
@@ -191,7 +202,15 @@ class FigureComparative(BaseModel):
     metric's definition (or one it derives from, or its plan
     baseline) differs between the two packs' definition-pack
     versions, so the two numbers were not produced by the same
-    rule. ``restated`` marks a figure the prior period's
+    rule. ``rate_changed`` is its sibling for the other silent
+    input: the figure is a consolidated figure whose derivation
+    converts money booked in a currency whose rate differs
+    between the two packs' stamped rate tables, so the two
+    numbers were not converted on the same basis either. It is
+    a flag, never a decomposition — the movement is not split
+    into "rate" and "trading" parts, for the same reason the
+    definition change is not separated out. ``restated`` marks
+    a figure the prior period's
     restatement touched — the comparative still shows the signed
     value, flagged, because that is what the board approved."""
 
@@ -202,6 +221,7 @@ class FigureComparative(BaseModel):
     prior_pack_id: str  # the signed pack the comparative cites
     prior_definition_pack_version: str = ""
     definition_changed: bool = False
+    rate_changed: bool = False
     restated: bool = False
     change: str | None = None      # current − prior, Decimal as string
     change_pct: str | None = None  # change / prior × 100, 2dp
@@ -257,6 +277,7 @@ class FigureFlux(BaseModel):
     movement_pct: str | None = None
     material: bool = False
     definition_changed: bool = False
+    rate_changed: bool = False
     restated: bool = False
     basis: str = ""   # the definition versions each side stands on
     by_entity: list[FluxContribution] = Field(default_factory=list)
@@ -279,6 +300,12 @@ class FluxSchedule(BaseModel):
     prior_pack_id: str
     current_definition_pack_version: str = ""
     prior_definition_pack_version: str = ""
+    # The two closes' rate-table versions, stated on the face
+    # beside the definition versions: a reader should see that
+    # the conversion basis moved without opening either pack.
+    # ``None`` when a period's batches carried no rate table.
+    current_fx_version: int | None = None
+    prior_fx_version: int | None = None
     threshold_abs: str = ""
     threshold_pct: str = ""
     entries: list[FigureFlux] = Field(default_factory=list)
