@@ -70,6 +70,18 @@ class DispositionRequest(BaseModel):
     subject: str | None = None
 
 
+class DryRunRequest(BaseModel):
+    candidate_version: str
+    reference_period: str | None = None
+
+
+class ActivateRequest(BaseModel):
+    version: str
+    from_period: str
+    actor: str
+    reason: str
+
+
 def create_app(service: CloseService | None = None) -> FastAPI:
     load_dotenv()
     configure_json_logging()
@@ -252,6 +264,37 @@ def create_app(service: CloseService | None = None) -> FastAPI:
             reason=request.reason, entity_id=request.entity_id,
             metric_id=request.metric_id, subject=request.subject)
         return pack.model_dump()
+
+    @app.get("/definitions")
+    def definitions(period: str | None = None) -> dict:
+        """The definition-governance state: every pack version
+        in the registry, the dry-runs on record, the
+        activations, and — with ``?period=`` — the version the
+        selection rule assigns to that period and the act that
+        assigned it."""
+        return svc().definition_state(period)
+
+    @app.post("/definitions/dry-run", status_code=201)
+    def definition_dry_run(request: DryRunRequest) -> dict:
+        """Compute a candidate version's impact over a signed
+        period and record it. Signs nothing, activates
+        nothing. Refused (409, ground named) when the version
+        is not in the registry or no signed reference exists."""
+        record = svc().dry_run_definition_change(
+            request.candidate_version, request.reference_period)
+        return record.model_dump()
+
+    @app.post("/definitions/activate", status_code=201)
+    def definition_activate(request: ActivateRequest) -> dict:
+        """Make a version govern closes from a period onward,
+        as a named act citing a recorded dry-run. Refused
+        (409, ground named) for an unnamed actor, a missing
+        reason, a version with no dry-run on record, the
+        already-governing version, or a signed from-period."""
+        record = svc().activate_definition_pack(
+            request.version, request.from_period, request.actor,
+            request.reason)
+        return record.model_dump()
 
     @app.post("/packs/{pack_id}/evidence", status_code=201)
     def generate_evidence(pack_id: str) -> dict:

@@ -88,6 +88,20 @@ disposition on the pack's face covers that exact variance —
 the number is shown with its true verdict and the named
 acceptance that carried it, never quietly upgraded. A pack
 that signed clean projects both sections as ``null``.
+
+Definition governance (round 8) joins as
+``definition_change``: when the signed pack was the first
+governed by a newly activated definition-pack version, the
+bundle carries the change statement from its face, the
+activation record it cites, and the dry-run report whose
+digest the activation relied on — the evidence that the
+ruler was changed by a named act, with its impact computed
+beforehand, not swapped silently between closes. The cited
+records must stand in the store and the dry-run's digest
+must match the citation, or generation refuses with the gap
+named. A pack with no change on its face projects
+``definition_change: null`` — the close ran under the version
+its predecessor signed under, and there is nothing to cite.
 """
 
 from __future__ import annotations
@@ -341,6 +355,52 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
                 "computed break is not evidence"
             )
 
+    # The definition change on the pack's face must cite
+    # records that stand: the activation that made the version
+    # govern, and the dry-run whose digest the activation (and
+    # the statement) relied on. A citation that cannot be
+    # resolved is a gap, named like every other gap here.
+    definition_change_section = None
+    if pack.definition_change is not None:
+        statement = pack.definition_change
+        activation = next(
+            (a for a in service.store.list_activations()
+             if a.activation_id == statement.activation_id), None)
+        if activation is None:
+            raise EvidenceError(
+                f"pack {pack.pack_id} states a definition change "
+                f"under activation {statement.activation_id}, "
+                "which does not stand in the store — the act "
+                "that changed the ruler cannot be evidenced"
+            )
+        dry_run = service.store.get_dry_run(statement.dry_run_id)
+        if dry_run is None:
+            raise EvidenceError(
+                f"pack {pack.pack_id} cites dry-run "
+                f"{statement.dry_run_id}, which does not stand "
+                "in the store — the impact the activation "
+                "relied on cannot be evidenced"
+            )
+        if dry_run.digest != statement.dry_run_digest \
+                or activation.dry_run_digest != dry_run.digest:
+            raise EvidenceError(
+                f"dry-run {dry_run.dry_run_id} stands in the "
+                f"store with digest {dry_run.digest}, but the "
+                f"pack cites {statement.dry_run_digest} — the "
+                "impact on record is not the impact the "
+                "activation relied on"
+            )
+        definition_change_section = {
+            "statement": statement.model_dump(),
+            "activation": activation.model_dump(),
+            "dry_run": {
+                "dry_run_id": dry_run.dry_run_id,
+                "digest": dry_run.digest,
+                "computed_at": dry_run.computed_at,
+                "report": dry_run.report.model_dump(),
+            },
+        }
+
     return {
         "format": BUNDLE_FORMAT,
         "pack": {
@@ -383,6 +443,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         if pack.dispositions else None,
         "opening_items": [i.model_dump() for i in pack.opening_items]
         if pack.opening_items else None,
+        "definition_change": definition_change_section,
         "variances": [v.model_dump() for v in pack.variances],
     }
 
@@ -689,6 +750,48 @@ def render_text(document: dict) -> str:
                 + (f" · supersedes {disposition['supersedes']}"
                    if disposition["supersedes"] else "")
             )
+    definition_change = document.get("definition_change")
+    if definition_change is not None:
+        statement = definition_change["statement"]
+        activation = definition_change["activation"]
+        report = definition_change["dry_run"]["report"]
+        lines.append("")
+        lines.append(
+            f"DEFINITION CHANGE — this pack is the first "
+            f"governed by definition pack v{statement['to_version']} "
+            f"(prior closes signed under v{statement['from_version']}):")
+        lines.append(
+            f"  Activated by {activation['actor']} at "
+            f"{activation['at']}, governing from "
+            f"{activation['from_period']} — {activation['reason']}")
+        lines.append(
+            f"  Impact first: dry-run "
+            f"{definition_change['dry_run']['dry_run_id']} over "
+            f"signed period {report['reference_period']} (pack "
+            f"{report['reference_pack_id']}), digest "
+            f"{definition_change['dry_run']['digest']} — "
+            f"{len(report['moved'])} figure(s) moved, "
+            f"{len(report['added'])} added, "
+            f"{len(report['dropped'])} dropped, "
+            f"{statement['material_count']} material by the "
+            "close's flux ruler")
+        for delta in report["moved"]:
+            scope = delta["entity_id"] or "consolidated"
+            lines.append(
+                f"    would move · {delta['metric_id']} · {scope} · "
+                f"{delta['currency']} {delta['base_value']} → "
+                f"{delta['candidate_value']} "
+                f"(Δ {delta['delta']})")
+        for figure in report["added"]:
+            scope = figure["entity_id"] or "consolidated"
+            lines.append(
+                f"    would add · {figure['metric_id']} · {scope} · "
+                f"{figure['currency']} {figure['value']}")
+        for figure in report["dropped"]:
+            scope = figure["entity_id"] or "consolidated"
+            lines.append(
+                f"    would drop · {figure['metric_id']} · {scope} · "
+                f"{figure['currency']} {figure['value']}")
     if document["variances"]:
         lines.append("")
         lines.append("VARIANCES ON THE SIGNED RECORD:")

@@ -82,6 +82,27 @@ def main(argv: list[str] | None = None) -> int:
     p_evidence.add_argument("pack_id")
     p_evidence.add_argument("--download", choices=["json", "txt"],
                             default=None)
+    p_defs = sub.add_parser(
+        "definitions",
+        help="print the definition-governance state: registry "
+             "versions, dry-runs, activations, and the version "
+             "governing --period when one is named")
+    p_defs.add_argument("--period", default=None)
+    p_dry = sub.add_parser(
+        "definition-dry-run",
+        help="compute a candidate version's impact over a "
+             "signed period and record it (signs nothing, "
+             "activates nothing)")
+    p_dry.add_argument("--version", required=True)
+    p_dry.add_argument("--reference-period", default=None)
+    p_act = sub.add_parser(
+        "definition-activate",
+        help="make a version govern closes from --from-period "
+             "onward, as a named act citing a recorded dry-run")
+    p_act.add_argument("--version", required=True)
+    p_act.add_argument("--from-period", required=True)
+    p_act.add_argument("--actor", required=True)
+    p_act.add_argument("--reason", required=True)
     sub.add_parser("runs", help="list all close runs as JSON")
     args = parser.parse_args(argv)
 
@@ -120,6 +141,17 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.write(data.decode("utf-8"))
             else:
                 print(record.model_dump_json(indent=2))
+        elif args.command == "definitions":
+            print(json.dumps(service.definition_state(args.period),
+                             indent=2))
+        elif args.command == "definition-dry-run":
+            record = service.dry_run_definition_change(
+                args.version, args.reference_period)
+            print(record.model_dump_json(indent=2))
+        elif args.command == "definition-activate":
+            record = service.activate_definition_pack(
+                args.version, args.from_period, args.actor, args.reason)
+            print(record.model_dump_json(indent=2))
         elif args.command == "runs":
             print(json.dumps([r.model_dump() for r in service.list_runs()],
                              indent=2))

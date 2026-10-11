@@ -89,9 +89,17 @@
       <button class="secondary" id="refresh">Refresh</button>
     </div>
     <table>
-      <thead><tr><th>Run</th><th>Period</th><th>Status</th><th>Packs</th></tr></thead>
-      <tbody id="runs-body"><tr><td colspan="4" class="note">No runs yet — run the demo close.</td></tr></tbody>
+      <thead><tr><th>Run</th><th>Period</th><th>Status</th><th>Definitions</th><th>Packs</th></tr></thead>
+      <tbody id="runs-body"><tr><td colspan="5" class="note">No runs yet — run the demo close.</td></tr></tbody>
     </table>
+    <h2 style="margin-top:20px;">Definition governance</h2>
+    <div id="governance" class="note">Loading the definition registry…</div>
+    <p class="note">Changing a definition is a governed act, not a file swap. A candidate
+    version's impact is first computed as a <em>dry-run</em> over a signed period — both
+    versions recomputed from that period's stamped sources — and recorded; a named
+    <em>activation</em> then makes the version govern from a stated period, citing the
+    dry-run it relied on. No activation reaches a signed period, and the version
+    governing each run is selected by that rule and printed on the run.</p>
     <h2 style="margin-top:20px;">What the verifier enforces</h2>
     <p class="note">Every figure in a pack is recomputed from the source extracts by an
     independent code path. A figure that cannot be reproduced blocks the pack, with the
@@ -140,16 +148,41 @@ async function readiness() {
 
 function money(v) { return v === null || v === undefined ? "—" : Number(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 
+async function loadGovernance() {
+  const slot = $("governance");
+  try {
+    const s = await api("/definitions");
+    let html = `<dl class="kv">
+      <dt>Pack</dt><dd>${s.pack_id}</dd>
+      <dt>Deployment default</dt><dd>v${s.default_version}</dd>
+      <dt>In the registry</dt><dd>${s.registry_versions.map(v => "v" + v).join(", ")}</dd></dl>`;
+    (s.activations || []).forEach(a => {
+      html += `<p class="note" style="margin-top:8px;">⚖ ${a.activation_id}: v${a.from_version} → <strong>v${a.to_version}</strong> governs from ${a.from_period} — activated by ${a.actor}: ${a.reason}<br>Cites dry-run ${a.dry_run_id} (digest ${String(a.dry_run_digest).slice(0, 12)}…)</p>`;
+    });
+    (s.dry_runs || []).forEach(r => {
+      const rep = r.report;
+      html += `<p class="note" style="margin-top:8px;">Dry-run ${r.dry_run_id}: v${rep.candidate_version} over signed ${rep.reference_period} (pack ${rep.reference_pack_id}) — ${rep.moved.length} moved, ${rep.added.length} added, ${rep.dropped.length} dropped${rep.families_added.length ? "; would newly raise " + rep.families_added.join(", ") : ""}${rep.families_removed.length ? "; would clear " + rep.families_removed.join(", ") : ""}.</p>`;
+    });
+    if (!s.activations.length && !s.dry_runs.length)
+      html += `<p class="note" style="margin-top:8px;">No dry-runs or activations on record — the deployment default governs every period.</p>`;
+    slot.innerHTML = html;
+  } catch (e) {
+    slot.textContent = "Definition governance state unavailable.";
+  }
+}
+
 async function loadRuns() {
   const runs = await api("/runs");
+  loadGovernance();
   const body = $("runs-body");
   if (!runs.length) {
-    body.innerHTML = '<tr><td colspan="4" class="note">No runs yet — run the demo close.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="note">No runs yet — run the demo close.</td></tr>';
     return;
   }
   body.innerHTML = runs.map(r => `<tr class="row" data-id="${r.run_id}">
     <td>${r.run_id}</td><td>${r.period}</td>
     <td class="status st-${r.status}">${r.status}</td>
+    <td>${r.definition_pack_version ? "v" + r.definition_pack_version : "—"}</td>
     <td>${r.pack_ids.length}</td></tr>`).join("");
   body.querySelectorAll("tr.row").forEach(tr =>
     tr.addEventListener("click", () => showRun(tr.dataset.id, runs)));
@@ -220,6 +253,7 @@ function packHtml(pack) {
   html += comparativesHtml(pack);
   html += fluxHtml(pack);
   html += dispositionsHtml(pack);
+  html += definitionChangeHtml(pack);
   if (pack.narrative)
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
   if (pack.decision)
@@ -392,6 +426,14 @@ function dispositionsHtml(pack) {
     }
   }
   return html;
+}
+
+function definitionChangeHtml(pack) {
+  const change = pack.definition_change;
+  if (!change) return "";
+  return `<h2 style="margin-top:16px;">Definition change — first pack under v${change.to_version}</h2>
+    <p class="note">This close runs under a definition-pack version its prior period did not sign under. The change was a governed act, stated here on the pack's face: activated by ${change.actor} (${change.activation_id}), governing from ${change.from_period} — ${change.reason}</p>
+    <p class="note">Before the act, its impact was computed: dry-run ${change.dry_run_id} over the prior signed period found ${change.moved_count} figure(s) moved, ${change.added_count} added, ${change.dropped_count} dropped — ${change.material_count} of the moved figures material by the close's flux ruler. The comparatives above flag every figure whose definition changed; the signed prior pack keeps v${change.from_version} forever.</p>`;
 }
 
 async function disposeVariance(packId) {
