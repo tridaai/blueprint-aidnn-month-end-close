@@ -102,6 +102,12 @@
     period's <em>signed</em> pack — and if that period's sources were restated after
     sign-off, the restatement is named on the pack and the signature is held until a
     controller acknowledges it.</p>
+    <p class="note">A blocked pack has a second honest exit besides fixing the books: a named
+    controller accepts a blocking variance in writing — a <em>disposition</em> — and the
+    close is presented for sign-off with the acceptances on its face, the variances
+    standing exactly as computed. An accepted break is never forgotten: it opens the
+    next period as a named item, is re-tested against the new sources, and blocks
+    again if it is still there.</p>
   </section>
   <section>
     <h2>Board pack</h2>
@@ -169,6 +175,8 @@ async function showRun(runId, runs) {
     btn.addEventListener("click", () => ackRestatement(btn.dataset.ack)));
   document.querySelectorAll("[data-evidence]").forEach(btn =>
     btn.addEventListener("click", () => generateEvidence(btn.dataset.evidence)));
+  document.querySelectorAll("[data-dispose]").forEach(btn =>
+    btn.addEventListener("click", () => disposeVariance(btn.dataset.dispose)));
   if (run.pack_ids) run.pack_ids.forEach(loadEvidence);
 }
 
@@ -211,6 +219,7 @@ function packHtml(pack) {
   html += icPairsHtml(pack);
   html += comparativesHtml(pack);
   html += fluxHtml(pack);
+  html += dispositionsHtml(pack);
   if (pack.narrative)
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
   if (pack.decision)
@@ -317,6 +326,97 @@ function fluxHtml(pack) {
     if (e.note) html += `<p class="note">${e.note}</p>`;
   });
   return html;
+}
+
+function varianceSubject(pack, v) {
+  // The subject that names which break a variance is, where the
+  // code does not — read from the verifier's own wording, the
+  // same rule the service applies (it recomputes it and remains
+  // the authority; a wrong subject is refused, by name).
+  if (v.code === "IC_DISAGREEMENT" || v.code === "IC_ONE_SIDED") {
+    const verdict = v.code === "IC_DISAGREEMENT" ? "IC_DISAGREEMENT" : "ONE_SIDED";
+    const pair = (pack.ic_pairs || []).find(p => p.verdict === verdict
+      && v.detail.includes(`pair ${p.seller_id} → ${p.buyer_id}`)
+      && v.detail.includes(`elimination '${p.elimination_id}'`));
+    return pair ? `${pair.elimination_id}:${pair.seller_id}->${pair.buyer_id}` : "";
+  }
+  if (v.code === "UNMATCHED_IC_LEG") {
+    const m = v.detail.match(/elimination '([^']+)'/);
+    return m ? m[1] : "";
+  }
+  if (v.code === "DUPLICATE_JOURNAL") {
+    const m = v.detail.match(/journal (\S+) appears/);
+    return m ? m[1] : "";
+  }
+  return "";
+}
+
+function dispositionsHtml(pack) {
+  let html = "";
+  const items = pack.opening_items || [];
+  if (items.length) {
+    html += `<h2 style="margin-top:16px;">Opening items — carried breaks, re-tested</h2>
+      <p class="note">Every acceptance on the prior signed pack's face opens this close as a named item and is re-tested against this period's sources: cleared by events, still present (it blocks again), or mutated — the same break with different figures, which the old acceptance does not cover. The item quotes the acceptance that carried it; its carry count is the break's age, stated plainly.</p>
+      <table><thead><tr><th>Break</th><th>Accepted by</th><th>Reason</th><th>Carry</th><th>Re-test</th></tr></thead><tbody>`
+      + items.map(i => `<tr><td>${i.code}${i.subject ? " · " + i.subject : ""}<br><span class="note">first accepted in ${i.origin_period} (pack ${i.origin_pack_id})</span></td>
+          <td>${i.dispositioned_by}</td><td>${i.reason}</td>
+          <td class="num">${i.carry_number}</td>
+          <td class="${i.retest === "CLEARED" ? "" : "flag"}">${i.retest}</td></tr>`).join("")
+      + `</tbody></table>`;
+  }
+  const dispositions = pack.dispositions || [];
+  if (dispositions.length) {
+    const superseded = new Set(dispositions.map(d => d.supersedes).filter(Boolean));
+    html += `<h2 style="margin-top:16px;">Dispositions — accepted breaks, on the record</h2>
+      <p class="note">A disposition never edits the verifier's verdict: the variance stands above, word for word. What a named controller accepted is listed here, and a pack presented under disposition carries these on its face into the signed record and its evidence bundle.</p>
+      <table><thead><tr><th>Record</th><th>Break</th><th>Accepted by</th><th>Reason</th><th>Carry</th></tr></thead><tbody>`
+      + dispositions.map(d => `<tr><td>${d.disposition_id}${superseded.has(d.disposition_id) ? "<br><span class=\"note\">superseded by a later record</span>" : ""}${d.supersedes ? "<br><span class=\"note\">supersedes " + d.supersedes + "</span>" : ""}</td>
+          <td>${d.code}${d.subject ? " · " + d.subject : ""}</td>
+          <td>${d.actor}</td><td>${d.reason}</td>
+          <td class="num">${d.carry_number}${d.carry_number > 1 ? "<br><span class=\"note\">first accepted in " + d.origin_period + "</span>" : ""}</td></tr>`).join("")
+      + `</tbody></table>`;
+  }
+  if (pack.status === "BLOCKED") {
+    const blocking = (pack.variances || []).filter(v => v.code !== "RESTATED_PRIOR_PERIOD");
+    if (blocking.length) {
+      html += `<h2 style="margin-top:16px;">Accept a break — disposition</h2>
+        <p class="note">The second honest exit from a block: fix the books, or accept the break in writing. A disposition records who accepted which variance and why; it changes neither the variance nor this pack's status. Rebuild the pack afterwards — the new build is presented for sign-off only when every blocking variance is covered, and the item carries into next period as an opening item that must clear there.</p>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <select id="disp-variance-${pack.pack_id}">`
+        + blocking.map((v, idx) => `<option value="${idx}">${v.code}${v.entity_id ? " · " + v.entity_id : ""}${v.metric_id ? " · " + v.metric_id : ""}</option>`).join("")
+        + `</select>
+          <input id="disp-actor-${pack.pack_id}" placeholder="Controller name (required)">
+          <input id="disp-reason-${pack.pack_id}" placeholder="Reason for accepting (required)" style="flex:1; min-width:220px;">
+          <button class="secondary" data-dispose="${pack.pack_id}">Accept &amp; carry</button></div>
+        <p class="note" id="disp-error-${pack.pack_id}"></p>`;
+    }
+  }
+  return html;
+}
+
+async function disposeVariance(packId) {
+  try {
+    const pack = await api(`/packs/${packId}`);
+    const blocking = (pack.variances || []).filter(v => v.code !== "RESTATED_PRIOR_PERIOD");
+    const idx = Number($("disp-variance-" + packId).value);
+    const v = blocking[idx];
+    await api(`/packs/${packId}/dispositions`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        code: v.code, entity_id: v.entity_id, metric_id: v.metric_id,
+        subject: varianceSubject(pack, v) || null,
+        actor: $("disp-actor-" + packId).value,
+        reason: $("disp-reason-" + packId).value,
+      }),
+    });
+    await loadRuns();
+    const runsAfter = await api("/runs");
+    const run = runsAfter.find(r => r.pack_ids.includes(packId));
+    if (run) await showRun(run.run_id, runsAfter);
+  } catch (e) {
+    const slot = $("disp-error-" + packId);
+    if (slot) slot.textContent = e.message;
+  }
 }
 
 async function ackRestatement(packId) {

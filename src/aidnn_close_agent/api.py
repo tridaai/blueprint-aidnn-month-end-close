@@ -61,6 +61,15 @@ class AcknowledgeRequest(BaseModel):
     note: str
 
 
+class DispositionRequest(BaseModel):
+    code: str
+    actor: str
+    reason: str
+    entity_id: str | None = None
+    metric_id: str | None = None
+    subject: str | None = None
+
+
 def create_app(service: CloseService | None = None) -> FastAPI:
     load_dotenv()
     configure_json_logging()
@@ -225,6 +234,23 @@ def create_app(service: CloseService | None = None) -> FastAPI:
                                 request: AcknowledgeRequest) -> dict:
         pack = svc().acknowledge_restatement(pack_id, request.actor,
                                              request.note)
+        return pack.model_dump()
+
+    @app.post("/packs/{pack_id}/dispositions")
+    def record_disposition(pack_id: str,
+                           request: DispositionRequest) -> dict:
+        """Record a named controller's acceptance of one
+        blocking variance on a blocked pack (ACCEPTED_CARRY).
+        Refused (409, ground named) for an unnamed controller,
+        a missing reason, a pack that is not BLOCKED, a
+        non-blocking code, or a code that names no break on
+        the pack. The pack stays BLOCKED; the close's next
+        build is presented for sign-off only when every
+        blocking variance is covered."""
+        pack = svc().record_disposition(
+            pack_id, code=request.code, actor=request.actor,
+            reason=request.reason, entity_id=request.entity_id,
+            metric_id=request.metric_id, subject=request.subject)
         return pack.model_dump()
 
     @app.post("/packs/{pack_id}/evidence", status_code=201)

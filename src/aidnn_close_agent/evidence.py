@@ -74,6 +74,20 @@ A pack stamped before tables rode the stamp projects
 ``fx.current: null``: the bundle says the rates are not on
 record rather than reconstructing them from batches the close
 may not have used.
+
+Variance disposition (round 7) joins as ``dispositions`` and
+``opening_items``, under the same rule as every section
+before it: a bundle for a pack signed under disposition
+*lists* the acceptances — a bundle that omitted them would
+present accepted breaks as clean passes, the one falsehood
+this artifact exists to prevent. The completeness discipline
+bends exactly there and nowhere else: a figure may stand in
+the bundle with a verdict other than ``verified`` only when
+the mismatch it carries is a variance on the pack and a
+disposition on the pack's face covers that exact variance —
+the number is shown with its true verdict and the named
+acceptance that carried it, never quietly upgraded. A pack
+that signed clean projects both sections as ``null``.
 """
 
 from __future__ import annotations
@@ -81,6 +95,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from . import dispositions as dispositions_module
 from . import guardrails
 from .definitions import (
     DefinitionPack,
@@ -171,11 +186,32 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
                 "number without the rule that produced it"
             )
         if figure.status != "verified":
-            raise EvidenceError(
-                f"figure {where} on pack {pack.pack_id} carries "
-                f"verifier verdict {figure.status!r}, not 'verified' — "
-                "a signed pack should hold no other verdict"
+            # The one honest exception: a pack signed under
+            # disposition may carry a figure whose mismatch is
+            # itself a variance on the pack, accepted exactly
+            # as computed by a disposition on the pack's face.
+            # The figure then stands with its true verdict and
+            # its named acceptance — never upgraded, never
+            # unexplained. Any other non-verified verdict is
+            # the refusal it has always been.
+            explained = any(
+                variance.metric_id == figure.metric_id
+                and variance.entity_id == figure.entity_id
+                and any(
+                    dispositions_module.disposition_covers(
+                        disposition, pack, variance)
+                    for disposition in pack.dispositions
+                )
+                for variance in pack.variances
             )
+            if not explained:
+                raise EvidenceError(
+                    f"figure {where} on pack {pack.pack_id} carries "
+                    f"verifier verdict {figure.status!r}, not "
+                    "'verified', and no disposition on the pack's "
+                    "face covers the variance that names it — a "
+                    "signed pack holds no unexplained verdict"
+                )
         figures.append({
             "metric_id": figure.metric_id,
             "label": figure.label,
@@ -288,6 +324,23 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             "pack should never present it"
         )
 
+    # Every acceptance on the signed pack's face must answer
+    # for a variance on the pack: an acceptance covering
+    # nothing would be decoration on the record, and the
+    # bundle refuses to carry it as evidence.
+    for disposition in pack.dispositions:
+        if not any(
+            dispositions_module.disposition_covers(
+                disposition, pack, variance)
+            for variance in pack.variances
+        ):
+            raise EvidenceError(
+                f"disposition {disposition.disposition_id} on pack "
+                f"{pack.pack_id} covers no variance on the pack — "
+                "an acceptance on the face that answers for no "
+                "computed break is not evidence"
+            )
+
     return {
         "format": BUNDLE_FORMAT,
         "pack": {
@@ -326,6 +379,10 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         "restatement_acknowledgement":
             pack.restatement_acknowledgement.model_dump()
             if pack.restatement_acknowledgement is not None else None,
+        "dispositions": [d.model_dump() for d in pack.dispositions]
+        if pack.dispositions else None,
+        "opening_items": [i.model_dump() for i in pack.opening_items]
+        if pack.opening_items else None,
         "variances": [v.model_dump() for v in pack.variances],
     }
 
@@ -586,6 +643,51 @@ def render_text(document: dict) -> str:
             lines.append(
                 f"  Acknowledged by {acknowledgement['actor']} at "
                 f"{acknowledgement['at']} — {acknowledgement['note']}"
+            )
+    opening_items = document.get("opening_items")
+    if opening_items is not None:
+        lines.append("")
+        lines.append(
+            f"OPENING ITEMS ({len(opening_items)}) — breaks "
+            "carried in from the prior signed pack, re-tested "
+            "against this period's sources:")
+        for item in opening_items:
+            subject = f" ({item['subject']})" if item["subject"] else ""
+            lines.append(
+                f"  {item['code']}{subject} · first accepted in "
+                f"{item['origin_period']} (pack "
+                f"{item['origin_pack_id']}) by "
+                f"{item['dispositioned_by']} — {item['reason']} · "
+                f"carry {item['carry_number']} · retest: "
+                f"{item['retest']}"
+            )
+            if item["current_detail"]:
+                lines.append(
+                    f"    this period: {item['current_detail']}")
+    dispositions = document.get("dispositions")
+    if dispositions is not None:
+        lines.append("")
+        lines.append(
+            f"DISPOSITIONS ({len(dispositions)}) — blocking "
+            "variances accepted on the record by a named "
+            "controller; the variances stand as computed, below:")
+        for disposition in dispositions:
+            subject = (f" ({disposition['subject']})"
+                       if disposition["subject"] else "")
+            origin = (
+                f" · first accepted in "
+                f"{disposition['origin_period']} (pack "
+                f"{disposition['origin_pack_id']})"
+                if disposition["carry_number"] > 1 else "")
+            lines.append(
+                f"  {disposition['disposition_id']} · "
+                f"{disposition['code']}{subject} · "
+                f"{disposition['decision']} by "
+                f"{disposition['actor']} at {disposition['at']} — "
+                f"{disposition['reason']} · carry "
+                f"{disposition['carry_number']}{origin}"
+                + (f" · supersedes {disposition['supersedes']}"
+                   if disposition["supersedes"] else "")
             )
     if document["variances"]:
         lines.append("")

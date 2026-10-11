@@ -62,6 +62,19 @@ def main(argv: list[str] | None = None) -> int:
     p_ack.add_argument("pack_id")
     p_ack.add_argument("--actor", required=True)
     p_ack.add_argument("--note", required=True)
+    p_disp = sub.add_parser(
+        "dispose-variance",
+        help="record a controller's acceptance of one blocking "
+             "variance on a blocked pack (ACCEPTED_CARRY); the "
+             "close's next build is presented for sign-off only "
+             "when every blocking variance is covered")
+    p_disp.add_argument("pack_id")
+    p_disp.add_argument("--code", required=True)
+    p_disp.add_argument("--actor", required=True)
+    p_disp.add_argument("--reason", required=True)
+    p_disp.add_argument("--entity", default=None)
+    p_disp.add_argument("--metric", default=None)
+    p_disp.add_argument("--subject", default=None)
     p_evidence = sub.add_parser(
         "evidence",
         help="generate a signed pack's audit evidence bundle "
@@ -92,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "acknowledge-restatement":
             pack = service.acknowledge_restatement(args.pack_id, args.actor,
                                                    args.note)
+            print(pack.model_dump_json(indent=2))
+        elif args.command == "dispose-variance":
+            pack = service.record_disposition(
+                args.pack_id, code=args.code, actor=args.actor,
+                reason=args.reason, entity_id=args.entity,
+                metric_id=args.metric, subject=args.subject)
             print(pack.model_dump_json(indent=2))
         elif args.command == "evidence":
             record = service.generate_evidence(args.pack_id)
