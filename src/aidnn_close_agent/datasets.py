@@ -522,6 +522,88 @@ def october_ic_variant_batch() -> SourceBatch:
                   journals=_hle_journals_october(ic_purchase="54500.00"))
 
 
+# ---------------------------------------------------------------------------
+# The third month: November 2026 — the carry's proving ground.
+#
+# November exists so the disposition layer has somewhere to be
+# tested: its journals are October's trading one month on
+# (same amounts, November dates), under the same definition
+# pack v1.1.0 and the same EUR rate (the rate table is v4; the
+# rate itself does not move). The one staged choice is HLE's
+# intercompany purchase:
+#
+# - at €54,500 (the default), the October disagreement is
+#   STILL PRESENT — same pair, same figures, same $560.00;
+# - at €55,000, the pair agrees and the carried item CLEARS;
+# - at any other amount (the tests use €54,000), the pair is
+#   the same break with different figures — MUTATED, and the
+#   October acceptance does not cover it.
+#
+# Gold is October's gold: the journals are October's journals,
+# so the figures are October's figures.
+# ---------------------------------------------------------------------------
+
+PERIOD_NOVEMBER = "2026-11"
+_NOV = "2026-11-30"
+
+
+def _november_journals(journals: list[Journal]) -> list[Journal]:
+    out = []
+    for journal in journals:
+        journal = journal.model_copy(update={"date": _NOV})
+        if journal.journal_id == "J-O-E7":
+            journal = journal.model_copy(update={
+                "memo": "Intercompany purchase from HLD (November "
+                        "booking; the October disagreement is the "
+                        "open item this line answers for)",
+            })
+        out.append(journal)
+    return out
+
+
+def build_november_world(ic_purchase: str = "54500.00") -> World:
+    """November 2026: October's trading one month on, with
+    HLE's intercompany purchase booked at ``ic_purchase`` —
+    the staged state of the carried October disagreement."""
+    september = build_world()
+    batches = [
+        _batch("N-HLG-GL-v1", "gl", "HLG", 1, None, "initial",
+               journals=_november_journals(_hlg_journals_october())),
+        _batch("N-HLD-GL-v1", "gl", "HLD", 1, None, "initial",
+               journals=_november_journals(_hld_journals_october())),
+        _batch("N-HLE-GL-v1", "gl", "HLE", 1, None, "initial",
+               journals=_november_journals(
+                   _hle_journals_october(ic_purchase))),
+        _batch("N-HLG-AR-v1", "ar", "HLG", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLG", billings="132000.00",
+                                      currency="USD")]),
+        _batch("N-HLD-AR-v1", "ar", "HLD", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLD", billings="1055000.00",
+                                      currency="USD")]),
+        _batch("N-HLE-AR-v1", "ar", "HLE", 1, None, "initial",
+               ar_billings=[ArBilling(entity_id="HLE", billings="647000.00",
+                                      currency="EUR")]),
+        _batch("N-FX-v1", "fx", None, 1, None, "initial",
+               rate_table=RateTable(version=4, reporting_currency="USD",
+                                    rates={"EUR": "1.12"})),
+        _batch("N-CRM-v1", "crm", None, 1, None, "initial",
+               opportunities=[
+                   Opportunity(name="Northgate Retail — frame agreement",
+                               amount="950000.00"),
+                   Opportunity(name="Alder Health — distribution RFP",
+                               amount="700000.00"),
+                   Opportunity(name="Pinecrest Foods — regional rollout",
+                               amount="400000.00"),
+               ]),
+    ]
+    return World(
+        entities=september.entities,
+        batches=batches,
+        gold_figures=build_october_world().gold_figures,
+        phase_a_variance_codes=[],
+    )
+
+
 RESTATEMENT_BATCH_ID = "B-HLG-GL-v2"
 
 

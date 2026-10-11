@@ -30,6 +30,15 @@ Each signed pack then generates its audit evidence bundle —
 the projection an external auditor re-performs from: figures
 with their definitions and verdicts, the source manifest with
 its recorded hashes, comparatives, flux, restatement, sign-off.
+
+The third act is October once more, on a fresh store, with one
+staged break: HLE books its intercompany purchase €500 light.
+The pair disagrees, the pack blocks, and fixing the books is
+not the only honest exit — the controller accepts the break
+in writing (a disposition), the rebuilt pack is presented
+for sign-off with the acceptance on its face and the variance
+standing word for word, and the signed pack carries the item
+into November as an opening item that must clear there.
 """
 
 from __future__ import annotations
@@ -41,11 +50,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from .config import definition_pack_path
 from .connectors import DatasetConnector
 from .datasets import (
+    IC_VARIANT_BATCH_ID,
     PERIOD,
     PERIOD_OCTOBER,
     RESTATEMENT_BATCH_ID,
     build_october_world,
     build_world,
+    october_ic_variant_batch,
 )
 from .definitions import load_definition_pack, load_definition_pack_version
 from .engine_offline import OfflineFinanceEngine
@@ -128,6 +139,7 @@ def run_demo() -> CloseService:
     _print_evidence(service, signed)
 
     _run_october(service)
+    _run_disposition_act()
     return service
 
 
@@ -249,6 +261,103 @@ def _run_october(september_service: CloseService) -> None:
     print(f"Its evidence bundle {record.bundle_id} carries the "
           f"comparatives, the restatement, and the acknowledgement: "
           f"{record.figure_count} figures, sha256 {record.sha256}")
+
+
+class _VariantConnector:
+    """The dataset connector with October's HLE extract swapped
+    for the staged intercompany variant — the same staging the
+    tests and evals use, behind the same port."""
+
+    name = "dataset-ic-variant"
+
+    def __init__(self, base: DatasetConnector) -> None:
+        self._base = base
+
+    def available(self):
+        return self._base.available()
+
+    def fetch(self, batch_id: str):
+        if batch_id == IC_VARIANT_BATCH_ID:
+            return october_ic_variant_batch()
+        return self._base.fetch(batch_id)
+
+
+def _run_disposition_act() -> None:
+    """Act three, on a fresh store: October with the staged
+    intercompany understatement — blocked, dispositioned,
+    presented, signed, and carried."""
+    print("\n" + "=" * 72)
+    print("October, once more: the break a controller accepts")
+    store = InMemoryCloseStore()
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    assert pack_v110 is not None
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    service = CloseService(
+        pipeline=pipeline, store=store,
+        connector=_VariantConnector(DatasetConnector()),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    world = build_october_world()
+    run = service.create_run(PERIOD_OCTOBER)
+    service.ingest(run.run_id, [b.batch_id for b in world.batches])
+    blocked = service.build_pack(run.run_id)
+    _print_pack(blocked, "The staged October attempt")
+    print("\nOne break, named by two checks: HLE booked its "
+          "intercompany purchase at €54,500 against HLD's $61,600 "
+          "sale — the pair disagrees by $560.00, so the legs do "
+          "not pair either. Every figure still verifies. The "
+          "books could be fixed and the pack rebuilt; the "
+          "controller takes the second honest exit instead:")
+    reason_pair = (
+        "HLE's €500 understatement is a known booking error in "
+        "their October close, confirmed with HLE's controller; "
+        "immaterial to the group. Accepted for October and "
+        "carried — it must clear in November's close."
+    )
+    reason_leg = (
+        "The unmatched leg is the same HLE understatement seen "
+        "from the elimination side; accepted with it, on the "
+        "same terms, and carried with it."
+    )
+    service.record_disposition(
+        blocked.pack_id, code="IC_DISAGREEMENT", actor=CONTROLLER,
+        reason=reason_pair)
+    service.record_disposition(
+        blocked.pack_id, code="UNMATCHED_IC_LEG", actor=CONTROLLER,
+        reason=reason_leg)
+    print(f"  · IC_DISAGREEMENT accepted and carried by {CONTROLLER}")
+    print(f"  · UNMATCHED_IC_LEG accepted and carried by {CONTROLLER}")
+    print("The blocked pack itself does not move — it stays "
+          "BLOCKED, its variances word for word. The rebuild is "
+          "what gets presented:")
+    presented = service.build_pack(run.run_id)
+    print(f"\n{presented.pack_id}: {presented.status} — the "
+          "verifier's verdict stands on it unchanged:")
+    for variance in presented.variances:
+        print(f"  ✗ {variance.code}: {variance.detail}")
+    print("…and the acceptances ride its face:")
+    for disposition in presented.dispositions:
+        print(f"  ✓ {disposition.disposition_id} · "
+              f"{disposition.code} · {disposition.decision} by "
+              f"{disposition.actor} — {disposition.reason}")
+    signed = service.sign_off(
+        presented.pack_id, "sign", CONTROLLER,
+        "figures verified; the intercompany break is accepted "
+        "on the record and carried to November")
+    print(f"\n{signed.pack_id} → {signed.status}. The signed "
+          "pack lists what was accepted next to the variances "
+          "themselves — and both acceptances now open November "
+          "as named items: re-tested against November's sources, "
+          "blocking again if the break is still there.")
+    record = service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    print(f"Its evidence bundle {record.bundle_id} carries the "
+          f"{len(document['dispositions'])} dispositions beside "
+          f"the variances they answer for — sha256 {record.sha256}")
 
 
 def main() -> None:
