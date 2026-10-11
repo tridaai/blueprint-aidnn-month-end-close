@@ -425,6 +425,150 @@ class OpeningItem(BaseModel):
                                        # the break, when it recurs
 
 
+class FigureDelta(BaseModel):
+    """One figure the candidate definitions would move: the
+    value the signed period's own definitions produce from its
+    stamped sources, the value the candidate produces from the
+    *same* sources, and the difference — all recomputed, none
+    copied from any pack record."""
+
+    metric_id: str
+    entity_id: str | None = None
+    currency: str
+    signed_pack_value: str  # what the signed pack carries
+    base_value: str         # recomputed under the signed version
+    candidate_value: str    # recomputed under the candidate
+    delta: str              # candidate − base
+    delta_pct: str | None = None  # delta / base × 100, 2dp
+    # Judged by the close's standing ruler — the flux
+    # schedule's materiality bars in policy — applied to the
+    # change the candidate itself would make.
+    material: bool = False
+
+
+class DryRunFigure(BaseModel):
+    """One figure a definition change would add or drop: it
+    exists under exactly one of the two versions."""
+
+    metric_id: str
+    entity_id: str | None = None
+    currency: str
+    value: str  # under the version that produces it
+
+
+class BaselineDiscrepancy(BaseModel):
+    """A signed figure the dry-run's baseline recomputation
+    does not reproduce from the signed pack's own stamped
+    sources. Expected to be empty in an honest world: batches
+    are append-only and the stamps name them exactly, so a
+    discrepancy here means a record was tampered with — and
+    the dry-run says so instead of inheriting the number."""
+
+    metric_id: str
+    entity_id: str | None = None
+    signed_value: str
+    recomputed_value: str
+
+
+class DryRunReport(BaseModel):
+    """The impact of a candidate definition-pack version,
+    computed before the candidate governs anything.
+
+    The report is a pure function of its inputs — the signed
+    reference pack's identity, its stamped sources, the two
+    definition versions — and carries no timestamp, so its
+    canonical bytes (and the digest an activation cites) are
+    stable: recompute it tomorrow and it is the same report.
+    Both sides are recomputed from the reference period's
+    stamped source batches at the rate table the signed pack
+    stamps: the candidate's effect is the *only* difference
+    between the two columns. ``variance_families`` are the
+    variance codes each side's verification produces over
+    those sources — a tie-out the candidate would newly fail
+    (or newly pass) is computed here, not asserted."""
+
+    pack_id: str
+    base_version: str       # the version the reference pack cites
+    candidate_version: str
+    reference_period: str
+    reference_pack_id: str  # the signed pack measured against
+    changed_metrics: list[str] = Field(default_factory=list)
+    moved: list[FigureDelta] = Field(default_factory=list)
+    added: list[DryRunFigure] = Field(default_factory=list)
+    dropped: list[DryRunFigure] = Field(default_factory=list)
+    variance_families_base: list[str] = Field(default_factory=list)
+    variance_families_candidate: list[str] = Field(default_factory=list)
+    families_added: list[str] = Field(default_factory=list)
+    families_removed: list[str] = Field(default_factory=list)
+    baseline_discrepancies: list[BaselineDiscrepancy] = \
+        Field(default_factory=list)
+
+    @property
+    def material_count(self) -> int:
+        return sum(1 for d in self.moved if d.material)
+
+
+class DefinitionDryRun(BaseModel):
+    """The stored dry-run record: the report, its digest, and
+    when it was computed (on the record, never inside the
+    report — the report's bytes are the digest's subject)."""
+
+    dry_run_id: str
+    report: DryRunReport
+    digest: str  # sha256 of the report's canonical bytes
+    computed_at: str = ""
+
+
+class PackActivation(BaseModel):
+    """A named human's act: this definition-pack version
+    governs closes from this period onward.
+
+    Append-only, like every governance record in this system.
+    An activation cites the dry-run whose impact justified it
+    (id + digest — the impact must exist before the act, and
+    the act names the exact impact it relied on). It can only
+    govern periods not yet signed: a signed period's pack
+    keeps the version it cites forever, and selection for a
+    period is computed from these records, never stored as a
+    mutable pointer — superseding an activation is a new
+    record naming the one it replaces."""
+
+    activation_id: str
+    pack_id: str
+    from_version: str  # the version governing before this act
+    to_version: str
+    from_period: str   # first period the new version governs
+    dry_run_id: str
+    dry_run_digest: str
+    actor: str
+    reason: str
+    at: str = ""
+    supersedes: str | None = None  # activation replaced, if any
+
+
+class DefinitionChange(BaseModel):
+    """The change statement a pack carries on its face when it
+    is the first pack governed by a newly activated version:
+    the version it runs under is not the version its prior
+    period signed under, and the pack says how that came to
+    be — who activated it, why, from which period, and what
+    the pre-activation dry-run found (headline counts; the
+    full report is the record the activation cites)."""
+
+    from_version: str
+    to_version: str
+    from_period: str
+    activation_id: str
+    actor: str
+    reason: str
+    dry_run_id: str
+    dry_run_digest: str
+    moved_count: int
+    added_count: int
+    dropped_count: int
+    material_count: int
+
+
 class BoardPack(BaseModel):
     """The close pack: figures, variances, versions, one decision.
 
@@ -476,6 +620,15 @@ class BoardPack(BaseModel):
     # :class:`OpeningItem`). Empty on a first close and on any
     # close whose predecessor signed clean.
     opening_items: list[OpeningItem] = Field(default_factory=list)
+    # The definition-governance layer: when this pack is the
+    # first governed by a newly activated definition-pack
+    # version, the change is stated on its face — the versions,
+    # the activation that made it govern, and the dry-run
+    # headline the activation relied on (see
+    # :class:`DefinitionChange`). None on every other pack:
+    # a close under the version its predecessor signed under
+    # has no change to state.
+    definition_change: DefinitionChange | None = None
     definition_pack_id: str = ""
     definition_pack_version: str = ""
     mart_version: str = ""
@@ -516,6 +669,13 @@ class CloseRun(BaseModel):
     run_id: str
     period: str
     status: RunStatus = "COLLECTING"
+    # The definition-pack version the governance selection
+    # rule assigns to this run's period, computed and recorded
+    # at creation — the selection is printed here, not left
+    # implicit in whichever service happened to be wired.
+    # Empty on runs recorded before selection existed.
+    definition_pack_id: str = ""
+    definition_pack_version: str = ""
     # entity_id → source kind → ingested batch version
     checklist: dict[str, dict[str, int]] = Field(default_factory=dict)
     # group-level kinds → ingested batch version (fx, crm)

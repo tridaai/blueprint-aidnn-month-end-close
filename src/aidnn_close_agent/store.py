@@ -1,5 +1,6 @@
-"""The close store: source batches, runs, board packs, and the
-evidence-bundle index.
+"""The close store: source batches, runs, board packs, the
+evidence-bundle index, and the definition-governance records
+(dry-runs and activations, migration ``0003``).
 
 Two implementations of one small surface, because the deployment
 gets PostgreSQL and the test suite gets a double with identical
@@ -7,8 +8,8 @@ behaviour:
 
 - :class:`PostgresCloseStore` — the production store (JSONB
   payloads in ``source_batches`` / ``close_runs`` /
-  ``board_packs`` / ``evidence_bundles``; migrations ``0001``
-  and ``0002``).
+  ``board_packs`` / ``evidence_bundles`` /
+  ``definition_governance``; migrations ``0001``–``0003``).
 - :class:`InMemoryCloseStore` — the double. When it is live,
   ``/readiness`` says so: nothing persists past the process.
 
@@ -23,7 +24,14 @@ import json
 import threading
 
 from .db import database_url, ensure_migrated
-from .schemas import BoardPack, CloseRun, EvidenceBundle, SourceBatch
+from .schemas import (
+    BoardPack,
+    CloseRun,
+    DefinitionDryRun,
+    EvidenceBundle,
+    PackActivation,
+    SourceBatch,
+)
 
 
 class InMemoryCloseStore:
@@ -34,6 +42,8 @@ class InMemoryCloseStore:
         self._runs: dict[str, CloseRun] = {}
         self._packs: dict[str, BoardPack] = {}
         self._bundles: dict[str, EvidenceBundle] = {}
+        self._dry_runs: dict[str, DefinitionDryRun] = {}
+        self._activations: dict[str, PackActivation] = {}
         self._order: list[str] = []
         self._lock = threading.Lock()
 
@@ -92,6 +102,26 @@ class InMemoryCloseStore:
         if pack_id:
             bundles = [b for b in bundles if b.pack_id == pack_id]
         return bundles
+
+    # -- definition governance -------------------------------------
+    def save_dry_run(self, record: DefinitionDryRun) -> DefinitionDryRun:
+        with self._lock:
+            self._dry_runs[record.dry_run_id] = record
+        return record
+
+    def get_dry_run(self, dry_run_id: str) -> DefinitionDryRun | None:
+        return self._dry_runs.get(dry_run_id)
+
+    def list_dry_runs(self) -> list[DefinitionDryRun]:
+        return list(self._dry_runs.values())
+
+    def save_activation(self, record: PackActivation) -> PackActivation:
+        with self._lock:
+            self._activations[record.activation_id] = record
+        return record
+
+    def list_activations(self) -> list[PackActivation]:
+        return list(self._activations.values())
 
 
 class PostgresCloseStore:
@@ -197,6 +227,33 @@ class PostgresCloseStore:
             return self._list("evidence_bundles", EvidenceBundle,
                               "pack_id = %s", (pack_id,))
         return self._list("evidence_bundles", EvidenceBundle)
+
+    # -- definition governance -------------------------------------
+    def save_dry_run(self, record: DefinitionDryRun) -> DefinitionDryRun:
+        self._save("definition_governance", "record_id", record.dry_run_id,
+                   record, {"kind": "dry_run",
+                            "pack_id": record.report.pack_id,
+                            "version": record.report.candidate_version})
+        return record
+
+    def get_dry_run(self, dry_run_id: str) -> DefinitionDryRun | None:
+        return self._get("definition_governance", "record_id", dry_run_id,
+                         DefinitionDryRun)
+
+    def list_dry_runs(self) -> list[DefinitionDryRun]:
+        return self._list("definition_governance", DefinitionDryRun,
+                          "kind = %s", ("dry_run",))
+
+    def save_activation(self, record: PackActivation) -> PackActivation:
+        self._save("definition_governance", "record_id",
+                   record.activation_id, record,
+                   {"kind": "activation", "pack_id": record.pack_id,
+                    "version": record.to_version})
+        return record
+
+    def list_activations(self) -> list[PackActivation]:
+        return self._list("definition_governance", PackActivation,
+                          "kind = %s", ("activation",))
 
 
 def default_store() -> InMemoryCloseStore | PostgresCloseStore:
