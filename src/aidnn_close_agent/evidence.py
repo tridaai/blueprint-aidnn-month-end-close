@@ -53,6 +53,17 @@ predates the flux schedule. Bundles already generated are
 stored bytes beside their records and are never rewritten;
 what changes is only what a *new* generation projects from a
 pack that carries a schedule.
+
+The intercompany agreement check (round 5) joins the same
+way, as ``intercompany``: every pair the verifier paired, both
+stated figures, the basis comparison, and the verdict — the
+evidence that the eliminations in the figures net real,
+mirrored trades and not fictions. A pack whose record carries
+no pairs (signed before the check existed, or a close with no
+intercompany legs to pair) projects ``intercompany: null``.
+Since a disagreement blocks sign-off, a signed pack's section
+shows agreed pairs; the disagreements live on the blocked
+packs that never earn a bundle, named in their variances.
 """
 
 from __future__ import annotations
@@ -268,6 +279,8 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         "fx_version": pack.source_versions.fx_version,
         "comparatives": comparatives,
         "flux": pack.flux.model_dump() if pack.flux is not None else None,
+        "intercompany": [p.model_dump() for p in pack.ic_pairs]
+        if pack.ic_pairs else None,
         "restatement": pack.restatement.model_dump()
         if pack.restatement is not None else None,
         "restatement_acknowledgement":
@@ -438,6 +451,44 @@ def render_text(document: dict) -> str:
                     )
             if entry["note"]:
                 lines.append(f"    note: {entry['note']}")
+    intercompany = document.get("intercompany")
+    if intercompany is not None:
+        lines.append("")
+        lines.append(
+            f"INTERCOMPANY AGREEMENT ({len(intercompany)}) — every "
+            "pair the verifier paired, both figures as stated in "
+            "each entity's own books, the buyer's figure expressed "
+            "in the seller's (basis) currency at the close's rate "
+            "table, and the verdict:")
+        for pair in intercompany:
+            revenue = (
+                f"{pair['seller_currency']} {pair['seller_amount']}"
+                if pair["seller_amount"] is not None
+                else "none booked")
+            cost = (
+                f"{pair['buyer_currency']} {pair['buyer_amount']}"
+                if pair["buyer_amount"] is not None
+                else "none booked")
+            basis = (
+                f" = {pair['basis_currency']} "
+                f"{pair['buyer_amount_basis']}"
+                + (f" at {pair['fx_rate']}"
+                   if pair["fx_rate"] is not None else "")
+                if pair["buyer_amount_basis"] is not None else "")
+            difference = (
+                f" · difference {pair['basis_currency']} "
+                f"{pair['difference']}"
+                if pair["difference"] is not None else "")
+            verdict = pair["verdict"]
+            if pair["missing_side"] is not None:
+                verdict += f" (no {pair['missing_side']} leg)"
+            lines.append(
+                f"  {pair['elimination_id']} · {pair['seller_id']} → "
+                f"{pair['buyer_id']} · revenue leg (account "
+                f"{pair['revenue_account']}) {revenue} · cost leg "
+                f"(account {pair['cost_account']}) {cost}{basis}"
+                f"{difference} · {verdict}"
+            )
     if document["restatement"] is not None:
         restatement = document["restatement"]
         lines.append("")

@@ -75,11 +75,21 @@ def _print_pack(pack, heading: str) -> None:
     print(f"\n{heading} — {pack.pack_id}: {pack.status}")
     for variance in pack.variances:
         print(f"  ✗ {variance.code}: {variance.detail}")
+    for pair in pack.ic_pairs:
+        seller = (f"{pair.seller_currency} {pair.seller_amount}"
+                  if pair.seller_amount is not None else "none booked")
+        buyer = (f"{pair.buyer_currency} {pair.buyer_amount}"
+                 if pair.buyer_amount is not None else "none booked")
+        print(f"  ⇄ IC pair {pair.seller_id} → {pair.buyer_id} "
+              f"({pair.elimination_id}): {pair.seller_id} books {seller}, "
+              f"{pair.buyer_id} books {buyer} — {pair.verdict}")
     for figure in pack.figures:
         scope = figure.entity_id or figure.scope
         mark = "✓" if figure.status == "verified" else "·"
+        flag = "  [IC disputed]" if figure.ic_disagreement else ""
         print(f"  {mark} {figure.metric_id:<32} {scope:<14} "
-              f"{figure.currency} {figure.value:>14}  [{figure.status}]")
+              f"{figure.currency} {figure.value:>14}  [{figure.status}]"
+              f"{flag}")
 
 
 def run_demo() -> CloseService:

@@ -206,8 +206,9 @@ function packHtml(pack) {
   html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th></tr></thead><tbody>`
     + pack.figures.map(f => `<tr><td>${f.label}</td><td>${f.entity_id || f.scope}</td>
       <td class="num">${f.currency} ${money(f.value)}</td>
-      <td class="status st-${f.status}">${f.status}</td></tr>`).join("")
+      <td class="status st-${f.status}">${f.status}${f.ic_disagreement ? ` <span class="flag">· IC disputed</span>` : ""}</td></tr>`).join("")
     + `</tbody></table>`;
+  html += icPairsHtml(pack);
   html += comparativesHtml(pack);
   html += fluxHtml(pack);
   if (pack.narrative)
@@ -220,7 +221,7 @@ function packHtml(pack) {
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="secondary" data-evidence="${pack.pack_id}">Generate evidence bundle</button>
       </div>
-      <p class="note">The bundle is a projection of the stored record — every figure with its definition and verifier verdict, the source manifest with its recorded hashes, comparatives, the flux schedule, and the sign-off. It regenerates byte-identically; the digest is the check.</p>
+      <p class="note">The bundle is a projection of the stored record — every figure with its definition and verifier verdict, the source manifest with its recorded hashes, comparatives, the flux schedule, the intercompany pairs, and the sign-off. It regenerates byte-identically; the digest is the check.</p>
       <p class="note" id="evidence-error-${pack.pack_id}"></p>`;
   }
   if (pack.status === "AWAITING_CONTROLLER") {
@@ -231,6 +232,23 @@ function packHtml(pack) {
       <button class="secondary" data-sign="return" data-pack="${pack.pack_id}">Return</button></div>
       <p class="note" id="gate-error-${pack.pack_id}"></p>`;
   }
+  return html;
+}
+
+function icPairsHtml(pack) {
+  const pairs = pack.ic_pairs || [];
+  if (!pairs.length) return "";
+  const stated = (amount, ccy) => amount === null ? "none booked" : ccy + " " + money(amount);
+  let html = `<h2 style="margin-top:16px;">Intercompany agreement — the pairs</h2>
+    <p class="note">Both sides of every internal trade, keyed by counterparty: the seller's figure as stated in its books against the buyer's, judged in the seller's currency with the buyer's figure translated once at the close's rate table. An agreed pair is silent in the variances; a disagreement or a one-sided pair blocks the pack, and the consolidated figures standing on a disputed pair are flagged "IC disputed" above.</p>
+    <table><thead><tr><th>Pair</th><th>Revenue leg (stated)</th><th>Cost leg (stated)</th><th style="text-align:right;">Cost leg in basis</th><th style="text-align:right;">Difference</th><th>Verdict</th></tr></thead><tbody>`
+    + pairs.map(p => `<tr><td>${p.seller_id} → ${p.buyer_id} · ${p.elimination_id}</td>
+        <td class="num">${stated(p.seller_amount, p.seller_currency)}</td>
+        <td class="num">${stated(p.buyer_amount, p.buyer_currency)}</td>
+        <td class="num">${p.buyer_amount_basis === null ? "—" : p.basis_currency + " " + money(p.buyer_amount_basis) + (p.fx_rate ? " at " + p.fx_rate : "")}</td>
+        <td class="num">${p.difference === null ? "—" : p.basis_currency + " " + money(p.difference)}</td>
+        <td class="${p.verdict === "AGREED" ? "" : "flag"}">${p.verdict}${p.missing_side ? " (no " + p.missing_side + " leg)" : ""}</td></tr>`).join("")
+    + `</tbody></table>`;
   return html;
 }
 
