@@ -65,6 +65,20 @@ from. Its gates:
   the comparatives with their signed-pack citations, the
   restatement's affected figures, and the acknowledgement.
 
+October's pack also carries the **flux schedule** — every
+comparative figure's movement decomposed by entity and by
+account. Its gates:
+
+- **flux identities** — every entry's by-entity lines sum to
+  its movement exactly, and its by-account lines do too where
+  the definition allows an account split (Decimal-exact);
+- **flux materiality** — the schedule flags the planted big
+  mover (the pipeline drop) and the large revenue movement,
+  and leaves the quiet figures unflagged;
+- **flux in the bundle** — October's evidence bundle carries
+  the schedule's 25 entries; September's bundle, from a close
+  that predates the schedule, states ``flux: null``.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -294,6 +308,10 @@ def _evaluate_october(september_service, signed_september) -> dict:
             "acknowledged restatement signs": False,
             "signed prior pack byte-identical": False,
             "restated bundle carries restatement + acknowledgement": False,
+            "flux identities hold for every comparative figure": False,
+            "flux materiality flags the big movers": False,
+            "flux definition-changed figures flagged": False,
+            "restated bundle carries the flux schedule": False,
         }
         return out
 
@@ -340,6 +358,34 @@ def _evaluate_october(september_service, signed_september) -> dict:
     flagged = {c.metric_id for c in pack.comparatives if c.definition_changed}
     out["gates"]["definition changes flagged"] = \
         flagged == DEFINITION_CHANGED_METRICS
+
+    flux = pack.flux
+    out["gates"]["flux identities hold for every comparative figure"] = (
+        flux is not None and len(flux.entries) == 25 and all(
+            sum((Decimal(line.amount) for line in e.by_entity), Decimal(0))
+            == Decimal(e.movement)
+            and (e.by_account is None or sum(
+                (Decimal(line.amount) for line in e.by_account),
+                Decimal(0)) == Decimal(e.movement))
+            for e in flux.entries
+        )
+    )
+    if flux is not None:
+        flux_by_key = {(e.metric_id, e.entity_id): e for e in flux.entries}
+        out["results"]["flux_material_entries"] = sum(
+            1 for e in flux.entries if e.material)
+        out["gates"]["flux materiality flags the big movers"] = (
+            flux_by_key[("pipeline_open", None)].material
+            and flux_by_key[("consolidated_revenue", None)].material
+            and not flux_by_key[("cash", "HLD")].material
+            and not flux_by_key[("revenue_ic", "HLG")].material
+        )
+        out["gates"]["flux definition-changed figures flagged"] = (
+            {e.metric_id for e in flux.entries if e.definition_changed}
+            == DEFINITION_CHANGED_METRICS
+            and all("definition change" in e.note
+                    for e in flux.entries if e.definition_changed)
+        )
 
     affected = {}
     if pack.restatement is not None:
@@ -412,6 +458,28 @@ def _evaluate_october(september_service, signed_september) -> dict:
     out["gates"][
         "restated bundle carries restatement + acknowledgement"
     ] = bundle_ok
+
+    flux_bundle_ok = False
+    if signed_october is not None:
+        october_data, _ = service.evidence_download(
+            signed_october.pack_id, "json")
+        october_doc = json.loads(october_data)
+        service.generate_evidence(signed_september.pack_id)
+        september_data, _ = service.evidence_download(
+            signed_september.pack_id, "json")
+        september_doc = json.loads(september_data)
+        revenue = next(
+            (e for e in (october_doc["flux"] or {}).get("entries", [])
+             if e["metric_id"] == "consolidated_revenue"), None)
+        flux_bundle_ok = (
+            october_doc["flux"] is not None
+            and len(october_doc["flux"]["entries"]) == 25
+            and revenue is not None
+            and revenue["movement"] == "115140.00"
+            and september_doc["flux"] is None
+        )
+    out["gates"]["restated bundle carries the flux schedule"] = \
+        flux_bundle_ok
     out["results"]["october_status"] = pack.status
     return out
 

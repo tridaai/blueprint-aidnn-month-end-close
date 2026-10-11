@@ -197,15 +197,43 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   flag with both versions named. October runs under pack
   v1.1.0, which widened operating expenses to include
   insurance; September's comparatives say so.
+- **Flux: every movement explains itself, and the explanation
+  foots** — alongside the comparatives, the pack carries a
+  flux schedule: each figure's period-over-period movement
+  decomposed **by entity** and, where the definition's shape
+  allows, **by account**. Each side is computed from that
+  period's own source batches — the current run's on one side,
+  the batches stamped on the prior period's signed pack on the
+  other — under that period's own definition version, so the
+  decomposed movement is exactly the movement the comparative
+  presents. The identities are hard: contributions sum to the
+  movement to the cent, and any conversion residue lands on a
+  named **rounding** line, never absorbed. A movement reaching
+  either materiality bar (an absolute bar and a percentage bar,
+  stated on the schedule's face) is **material** and carries
+  its drivers ordered largest first; quieter lines are listed
+  whole. Where a definition changed, the entry keeps the flag
+  and says the movement includes the definition change —
+  the widened insurance account appears as its own line —
+  rather than splitting the movement into a "definition part"
+  and a "trading part" that would rest on a counterfactual.
+  An elimination (a matched pairing, not a sum of accounts)
+  and the pipeline figure carry no account split, and say why.
+  The schedule is **verified like a figure**: the verifier
+  recomputes every decomposition independently from the same
+  sources, and a mismatch is a named `FLUX_MISMATCH` variance
+  that blocks the pack. The narrative quotes flux only after
+  that check, and only for entries that tie to verified
+  figures.
 - **The audit evidence pack** — a signed pack can generate
   one bundle an external auditor can re-perform from: every
   figure with its definition entry reproduced and the
   verifier's verdict as recorded, the manifest of the exact
   source extracts consumed (versions and the content hashes
   from ingestion), the comparatives and the signed pack they
-  cite, any restatement and its acknowledgement, and the
-  sign-off record with the checklist state the signature
-  froze. The bundle is a **projection of stored records** —
+  cite, the flux schedule, any restatement and its
+  acknowledgement, and the sign-off record with the checklist
+  state the signature froze. The bundle is a **projection of stored records** —
   it recomputes nothing — it is refused for anything but a
   `SIGNED_OFF` pack (state named), it is checked for
   completeness before anything is written (any gap refuses,
@@ -319,6 +347,15 @@ gates on it:
   bytes — and generation for the blocked first-attempt pack
   is refused with its state named. October's bundle carries
   the comparatives, the restatement, and the acknowledgement.
+- **Flux identities** — every one of the 25 flux entries'
+  decompositions sums to its movement exactly, by entity and
+  by account; **materiality** flags the planted big mover
+  (the pipeline drop) and the large revenue movement while
+  the quiet figures stay unflagged; **definition-changed
+  figures** carry the flux flag too; and October's evidence
+  bundle carries the schedule's 25 entries while September's
+  — a close that predates the schedule — states `flux: null`
+  in the same bundle format.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.

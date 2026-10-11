@@ -32,3 +32,8 @@ def test_eval_pack_passes():
     assert results["gates"]["evidence refused for the blocked pack"]
     assert results["gates"][
         "restated bundle carries restatement + acknowledgement"]
+    # Round 4: the flux schedule gates too.
+    assert results["gates"]["flux identities hold for every comparative figure"]
+    assert results["gates"]["flux materiality flags the big movers"]
+    assert results["gates"]["flux definition-changed figures flagged"]
+    assert results["gates"]["restated bundle carries the flux schedule"]

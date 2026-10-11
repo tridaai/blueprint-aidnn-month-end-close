@@ -21,9 +21,10 @@
   "phase_b_status": "SIGNED_OFF",
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "9a484091f0b13a2aef0e78166d72e6ada6d0c7b7c7289e4fcdfbea9e6ab948f5",
+  "evidence_sha256": "fd20093ef36f9fda2baaf3956c7d2453518b0d239613fd26bed7f13b33d712dd",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
+  "flux_material_entries": 12,
   "restatement_affected": {
     "opex@HLG": [
       "54000.00",
@@ -46,7 +47,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "c75079e9cb9bd05000fc4f313adbd56f0265256028fa2668514433afd9c0be9a",
+  "october_evidence_sha256": "ac052ada04ae24d7d939d13dc6e0f21f7e49623ebce379d508d22c60a8232f0d",
   "october_status": "SIGNED_OFF",
   "gates": {
     "planted traps named + blocked": true,
@@ -63,11 +64,15 @@
     "october gold figures exact": true,
     "comparatives tie to the signed pack": true,
     "definition changes flagged": true,
+    "flux identities hold for every comparative figure": true,
+    "flux materiality flags the big movers": true,
+    "flux definition-changed figures flagged": true,
     "restatement named with gold figures": true,
     "unacknowledged restatement holds the signature": true,
     "acknowledged restatement signs": true,
     "signed prior pack byte-identical": true,
-    "restated bundle carries restatement + acknowledgement": true
+    "restated bundle carries restatement + acknowledgement": true,
+    "restated bundle carries the flux schedule": true
   },
   "gate_passed": true
 }

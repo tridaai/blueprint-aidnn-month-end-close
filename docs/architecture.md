@@ -265,13 +265,88 @@ comparatives carry the flag with both versions cited on the
 pack. A metric absent from either period simply has no
 comparative — invention is not an option here either.
 
+## Flux: the movement, decomposed and footing
+
+Boards do not only ask what the number is — they ask why it
+moved. The flux schedule (`flux.py`) answers with arithmetic,
+not prose: for every figure with a comparative, the movement
+is decomposed two ways and each decomposition foots to the
+movement exactly.
+
+**Same sources, same versions.** Each side of a movement is
+computed from that period's source batches under that
+period's own definition-pack version — the current run's
+batches on one side; on the other, the batches *stamped on the
+prior period's signed pack*, loaded by id from the store. The
+stamped set matters: a restated batch supersedes in the
+store, but the movement the board reads is current against
+the signed record, so the prior side is decomposed from what
+the signed record was built from — pre-restatement — and
+reproduces the signed figures exactly. This is the
+restatement recomputation's convention (each period under its
+own definitions) applied to the decomposition.
+
+**Two shapes, honestly bounded.** By entity: an entity figure
+splits to itself; a `sum_converted` splits per entity at each
+period's own rates; `add`/`subtract` merge their arguments'
+splits with signs; `vs_plan` adds a **plan line** carrying the
+baseline's own move, negated — the plan moved too, and the
+schedule says so. By account: base metrics split over their
+account sets; converted figures split per account across
+entities. Two figures carry no account split and say why: an
+elimination is a matched pairing of two legs under a `min()`,
+not a sum of accounts, and the CRM pipeline figure has no GL
+accounts at all — both ride a single group line instead. And
+when a definition changed, the account union is used, so an
+account that joined the set (6400, insurance, under v1.1.0)
+appears with a zero prior contribution: the definition
+change becomes a visible line in the decomposition, flagged
+on the entry, never separated into a counterfactual
+"definition effect" figure.
+
+**Footing is structural, residue is named.** Contributions
+are Decimal sums. Conversion is the one place parts and whole
+can round apart (an account cell converted per entity against
+a figure converted per entity total); when they do, the
+residue is appended as a `rounding` contribution — labelled,
+signed, visible — never folded into a driver.
+
+**Materiality is policy, stated on the schedule.** A movement
+is material when it reaches either bar in `policy.py` — an
+absolute bar in the figure's own currency, or a percentage
+bar against the prior figure. Material entries order their
+drivers by size; immaterial entries are computed and checked
+identically but listed plainly. The thresholds ride the
+schedule itself, and the verifier checks the flags against
+the schedule's own stated bars.
+
+**The check is a second implementation.** `verify_flux`
+recomputes every entry from the two batch sets with this
+module's own figure machinery — never importing the
+producer's decomposition — and compares line for line: the
+entry set against the comparatives, each movement against its
+comparative's change, each prior value against the signed
+figure, each contribution against recomputation, each
+decomposition against its own sum, each material flag
+against the stated thresholds. A disagreement is a
+`FLUX_MISMATCH` variance and blocks the pack like any other.
+The narrative then quotes flux only in the verified branch,
+and `build_narrative` re-ties every entry it receives to the
+verified figure it explains before speaking — a flux number
+is a figure for the round-1 rule, and is treated as one.
+When the prior period's definition version or a stamped batch
+is unavailable, the schedule is absent rather than computed
+under the wrong definitions — the same degradation the
+restatement layer accepts.
+
 ## The gate: segregation as structure
 
 The LangGraph pipeline (`graph.py`) has three nodes that matter:
 
 1. **engine** — proposes figures; writes nothing but the draft
    pack record.
-2. **verify** — recomputes, disposes: verified figures and a
+2. **verify** — recomputes, disposes: verified figures, a
+   checked flux schedule where comparatives exist, and a
    narrative (verified figures only, `narrative.py` refuses
    anything else) on a pass; named variances on a block.
 3. **gate** — an `interrupt` on a verified pack, checkpointed
@@ -310,9 +385,22 @@ verify node's disposition, stored on the pack at verification
 time); the source manifest — every batch the pack stamps, with
 kind, entity, version, and the content hash recorded on the
 batch at ingestion; the comparatives with their citations;
-the restatement report and its acknowledgement; the standing
+the flux schedule, when the pack carries one; the
+restatement report and its acknowledgement; the standing
 variances; and the sign-off record — decision, controller,
-reason, time — with the run's checklist state. That last item
+reason, time — with the run's checklist state.
+
+The flux section joins the bundle **under the same `v1`
+format** — the precedent the comparative layer set when it
+joined in round 2. The format version names the bundle's
+schema family, a projection whose sections mirror the layers
+the pack itself carries; it is not a per-section changelog.
+A pack signed before the flux schedule existed carries no
+schedule and never will (a signed pack is never edited), so
+its bundle states `flux: null` — the honest record that this
+close predates the layer. Bundles already generated are
+stored bytes beside their records and are never rewritten;
+a new generation simply projects what its pack carries. That last item
 deserves its argument: the checklist is not stamped on the
 pack at signing; it is read back from the run. That is sound
 because a signed pack's run is CLOSED, and a closed run
