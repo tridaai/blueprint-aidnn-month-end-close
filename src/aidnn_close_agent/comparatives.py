@@ -141,6 +141,15 @@ class ComparativeContext:
     prior_pack_def: DefinitionPack | None  # None: version not on disk
     definition_changed: set[str] = field(default_factory=set)
     restatement: RestatementReport | None = None
+    # The batches the signed pack was built from, exactly as
+    # stamped on it — the flux schedule decomposes the prior
+    # side from these, NOT from the store's current versions of
+    # the period's slots: a restated batch supersedes in the
+    # store, but the movement the board reads is against the
+    # signed record, so the decomposition reads what the signed
+    # record read. ``None`` when a stamped batch is missing from
+    # the store (flux then degrades to absent, never guessed).
+    prior_batches: list | None = None
 
 
 def _detect_restatement(store, signed: BoardPack,
@@ -214,11 +223,19 @@ def prepare_comparatives(store, current_pack: DefinitionPack, period: str,
         changed_metric_ids(prior_def, current_pack)
         if prior_def is not None else set()
     )
+    prior_batches = []
+    for batch_id in prior.source_versions.batches:
+        batch = store.get_batch(batch_id)
+        if batch is None:
+            prior_batches = None
+            break
+        prior_batches.append(batch)
     return ComparativeContext(
         prior_pack=prior,
         prior_pack_def=prior_def,
         definition_changed=changed,
         restatement=_detect_restatement(store, prior, prior_def),
+        prior_batches=prior_batches,
     )
 
 

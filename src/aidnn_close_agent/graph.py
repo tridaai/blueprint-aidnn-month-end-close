@@ -29,6 +29,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from . import comparatives as comparatives_module
+from . import flux as flux_module
 from . import verifier as verifier_module
 from .definitions import DefinitionPack
 from .marts import MartSet
@@ -139,9 +140,56 @@ class PackPipeline:
                     "detail": variance.detail,
                 })
 
-        if report.passed and not comparative_failures:
+        # The flux schedule: every comparative figure's movement
+        # decomposed by entity and by account, produced here and
+        # checked by the verifier's own implementation over the
+        # same two batch sets. A schedule that disagrees with
+        # the sources blocks the pack — an explanation that does
+        # not foot is worse than none. The schedule is absent
+        # (not fabricated) when the prior period's definitions
+        # or stamped batches are unavailable.
+        flux_failures: list = []
+        if comparative_ctx is not None and pack.comparatives:
+            schedule = flux_module.build_schedule(
+                self.pack_def, comparative_ctx.prior_pack_def,
+                batches, comparative_ctx.prior_batches,
+                pack.figures, pack.comparatives,
+                prior_period=comparative_ctx.prior_pack.period,
+                prior_pack_id=comparative_ctx.prior_pack.pack_id,
+            )
+            if schedule is not None:
+                pack.flux = schedule
+                flux_failures = verifier_module.verify_flux(
+                    schedule, self.pack_def,
+                    comparative_ctx.prior_pack_def,
+                    batches, comparative_ctx.prior_batches or [],
+                    pack.figures, pack.comparatives,
+                )
+                pack.variances.extend(flux_failures)
+                material = sum(1 for e in schedule.entries if e.material)
+                pack.audit.append({
+                    "event": "flux_attached", "at": _now(),
+                    "detail": f"flux schedule decomposes "
+                              f"{len(schedule.entries)} movements "
+                              f"({material} material) against signed "
+                              f"pack {schedule.prior_pack_id}; each "
+                              "decomposition recomputed independently "
+                              "by the verifier",
+                })
+            else:
+                pack.audit.append({
+                    "event": "flux_unavailable", "at": _now(),
+                    "detail": "no flux schedule: the prior period's "
+                              "definition-pack version or stamped "
+                              "source batches are unavailable, and a "
+                              "decomposition under the wrong "
+                              "definitions would be a fabrication",
+                })
+
+        if report.passed and not comparative_failures and not flux_failures:
             pack.status = "AWAITING_CONTROLLER"
-            pack.narrative = build_narrative(pack.figures, pack.period)
+            pack.narrative = build_narrative(pack.figures, pack.period,
+                                             flux=pack.flux)
             pack.audit.append({
                 "event": "verified", "at": _now(),
                 "detail": f"all {len(report.checks)} figures recomputed from "

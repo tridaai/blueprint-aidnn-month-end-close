@@ -33,12 +33,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from . import policy
 from .definitions import DefinitionPack, MetricDefinition
 from .fx import D, ZERO, RateTable, money, q
 from .schemas import (
     BoardPack,
     Figure,
     FigureComparative,
+    FluxSchedule,
     SourceBatch,
     Variance,
 )
@@ -313,6 +315,362 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
                    "definition pack does not define",
         ))
     return report
+
+
+# -- the flux check ---------------------------------------------------
+#
+# The flux schedule is a *claim*: that this decomposition of
+# each movement is the decomposition the sources produce. The
+# check below is a second implementation of the decomposition,
+# written against this module's own figure machinery (never
+# imported from the schedule's producer), and it compares the
+# two line for line. It also checks the schedule against facts
+# neither implementation computes: the entries must cover
+# exactly the pack's comparatives, each movement must equal
+# its comparative's change, each prior value must equal the
+# signed figure the comparative cites, and each decomposition
+# must foot to its own movement. A schedule that disagrees
+# with the sources — or with itself — is a FLUX_MISMATCH and
+# blocks the pack like any other variance.
+
+
+class _FluxPeriod:
+    """One period as the flux check reads it: raw lines per
+    entity (this module's own flattening), the rate table, the
+    CRM total."""
+
+    def __init__(self, pack_def: DefinitionPack,
+                 batches: list[SourceBatch]) -> None:
+        self.pack_def = pack_def
+        self.lines = _entity_lines(batches, pack_def, [])
+        fx_batch = next((b for b in batches if b.kind == "fx"), None)
+        self.rates: RateTable = (
+            fx_batch.rate_table if fx_batch and fx_batch.rate_table
+            else RateTable(version=0,
+                           reporting_currency=pack_def.reporting_currency)
+        )
+        self.currencies = {e["entity_id"]: e["currency"]
+                           for e in pack_def.entities}
+        self.crm_total = ZERO
+        for batch in batches:
+            if batch.kind == "crm":
+                for opp in batch.opportunities:
+                    self.crm_total += D(opp.amount)
+        self.crm_total = q(self.crm_total)
+
+    def base(self, metric: MetricDefinition, entity_id: str) -> Decimal:
+        return _sum(self.lines.get(entity_id, []), metric)
+
+    def base_account(self, metric: MetricDefinition, entity_id: str,
+                     account: str) -> Decimal:
+        probe = MetricDefinition(
+            metric_id=metric.metric_id, label=metric.label,
+            scope=metric.scope, source=metric.source,
+            measure=metric.measure, accounts=[account],
+            exclude_ic=metric.exclude_ic,
+        )
+        return _sum(self.lines.get(entity_id, []), probe)
+
+    def matched(self, elimination_id: str) -> Decimal:
+        elim = next(e for e in self.pack_def.eliminations
+                    if e.elimination_id == elimination_id)
+        revenue = cost = ZERO
+        for entity_id, amount in _legs(self.lines, elim.revenue_account,
+                                       "credit").items():
+            revenue += self.rates.convert(amount, self.currencies[entity_id])
+        for entity_id, amount in _legs(self.lines, elim.cost_account,
+                                       "debit").items():
+            cost += self.rates.convert(amount, self.currencies[entity_id])
+        return min(q(revenue), q(cost))
+
+    def value(self, metric_id: str, entity_id: str | None) -> Decimal:
+        metric = self.pack_def.metric(metric_id)
+        if metric.derived is None:
+            if metric.source == "crm":
+                return self.crm_total
+            return self.base(metric, entity_id or "")
+        derived = metric.derived
+        assert derived is not None
+        if derived.op == "sum_converted":
+            base = self.pack_def.metric(derived.of or "")
+            total = ZERO
+            for entity in self.pack_def.entity_ids():
+                total += self.rates.convert(self.base(base, entity),
+                                            self.currencies[entity])
+            return q(total)
+        if derived.op in ("add", "subtract"):
+            total = self.value(derived.args[0], None)
+            for arg in derived.args[1:]:
+                value = self.value(arg, None)
+                total = total + value if derived.op == "add" \
+                    else total - value
+            return q(total)
+        if derived.op == "vs_plan":
+            return q(self.value(derived.of or "", None)
+                     - D(self.pack_def.plan.get(derived.of or "", "0")))
+        if derived.op == "elimination":
+            return self.matched(derived.elimination_id or "")
+        raise ValueError(f"unknown derived op {derived.op!r}")
+
+    def entity_shape(self, metric_id: str, entity_id: str | None,
+                     ) -> list[tuple[str, str, Decimal]]:
+        metric = self.pack_def.metric(metric_id)
+        if entity_id is not None:
+            return [(entity_id, "entity", self.value(metric_id, entity_id))]
+        if metric.derived is None:
+            return [("", "group", self.value(metric_id, None))]
+        derived = metric.derived
+        assert derived is not None
+        if derived.op == "sum_converted":
+            base = self.pack_def.metric(derived.of or "")
+            return [
+                (entity, "entity",
+                 self.rates.convert(self.base(base, entity),
+                                    self.currencies[entity]))
+                for entity in self.pack_def.entity_ids()
+            ]
+        if derived.op in ("add", "subtract"):
+            merged: dict[str, tuple[str, Decimal]] = {}
+            order: list[str] = []
+            for index, arg in enumerate(derived.args):
+                sign = Decimal(1) if index == 0 or derived.op == "add" \
+                    else Decimal(-1)
+                for key, kind, amount in self.entity_shape(arg, None):
+                    if key not in merged:
+                        merged[key] = (kind, ZERO)
+                        order.append(key)
+                    kind0, total = merged[key]
+                    merged[key] = (kind0, total + sign * amount)
+            return [(key, merged[key][0], q(merged[key][1])) for key in order]
+        if derived.op == "vs_plan":
+            return self.entity_shape(derived.of or "", None) + [
+                ("", "plan",
+                 -D(self.pack_def.plan.get(derived.of or "", "0")))]
+        if derived.op == "elimination":
+            return [("", "group", self.value(metric_id, None))]
+        raise ValueError(f"unknown derived op {derived.op!r}")
+
+    def account_shape(self, metric_id: str, entity_id: str | None,
+                      ) -> list[tuple[str, str, Decimal]] | None:
+        metric = self.pack_def.metric(metric_id)
+        if metric.derived is None:
+            if metric.source != "gl" or entity_id is None:
+                return None
+            return [
+                (account, "account",
+                 self.base_account(metric, entity_id, account))
+                for account in metric.accounts
+            ]
+        derived = metric.derived
+        assert derived is not None
+        if derived.op == "sum_converted":
+            base = self.pack_def.metric(derived.of or "")
+            return [
+                (account, "account", q(sum(
+                    (self.rates.convert(
+                        self.base_account(base, entity, account),
+                        self.currencies[entity])
+                     for entity in self.pack_def.entity_ids()),
+                    ZERO,
+                )))
+                for account in base.accounts
+            ]
+        if derived.op in ("add", "subtract"):
+            merged: dict[str, tuple[str, Decimal]] = {}
+            order: list[str] = []
+            for index, arg in enumerate(derived.args):
+                shape = self.account_shape(arg, None)
+                if shape is None:
+                    return None
+                sign = Decimal(1) if index == 0 or derived.op == "add" \
+                    else Decimal(-1)
+                for key, kind, amount in shape:
+                    if key not in merged:
+                        merged[key] = (kind, ZERO)
+                        order.append(key)
+                    kind0, total = merged[key]
+                    merged[key] = (kind0, total + sign * amount)
+            return [(key, merged[key][0], q(merged[key][1])) for key in order]
+        if derived.op == "vs_plan":
+            shape = self.account_shape(derived.of or "", None)
+            if shape is None:
+                return None
+            return shape + [
+                ("", "plan",
+                 -D(self.pack_def.plan.get(derived.of or "", "0")))]
+        return None
+
+
+def _flux_movement(current: list[tuple[str, str, Decimal]],
+                   prior: list[tuple[str, str, Decimal]],
+                   movement: Decimal) -> list[tuple[str, str, str]]:
+    """current − prior per key, as comparable (key, kind,
+    amount-string) lines, with the residue on a rounding line —
+    the check's own assembly of what the schedule should say."""
+    prior_by_key = {key: amount for key, _, amount in prior}
+    lines: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for key, kind, amount in current:
+        seen.add(key)
+        lines.append((key, kind, money(q(amount - prior_by_key.get(
+            key, ZERO)))))
+    for key, kind, amount in prior:
+        if key not in seen:
+            lines.append((key, kind, money(q(-amount))))
+    residue = q(movement - sum((D(amount) for _, _, amount in lines), ZERO))
+    if residue != ZERO:
+        lines.append(("rounding", "rounding", money(residue)))
+    return sorted(lines)
+
+
+def _schedule_lines(lines) -> list[tuple[str, str, str]]:
+    return sorted((line.key, line.kind, line.amount) for line in lines)
+
+
+def verify_flux(schedule: FluxSchedule,
+                current_def: DefinitionPack,
+                prior_def: DefinitionPack,
+                current_batches: list[SourceBatch],
+                prior_batches: list[SourceBatch],
+                figures: list[Figure],
+                comparatives: list[FigureComparative],
+                ) -> list[Variance]:
+    """Recompute the flux schedule from source and compare.
+
+    The schedule under check was produced elsewhere; everything
+    it claims is recomputed here from the two periods' batches
+    under their own definition versions, and compared line for
+    line. Returns FLUX_MISMATCH variances (empty = the schedule
+    stands)."""
+    variances: list[Variance] = []
+
+    def fail(metric_id, entity_id, detail):
+        variances.append(Variance(
+            code="FLUX_MISMATCH", metric_id=metric_id,
+            entity_id=entity_id, detail=detail))
+
+    if schedule.threshold_abs != policy.FLUX_MATERIAL_ABS \
+            or schedule.threshold_pct != policy.FLUX_MATERIAL_PCT:
+        fail(None, None,
+             "the flux schedule states materiality thresholds "
+             f"({schedule.threshold_abs} / {schedule.threshold_pct}) "
+             "that are not the policy's "
+             f"({policy.FLUX_MATERIAL_ABS} / {policy.FLUX_MATERIAL_PCT})")
+
+    current = _FluxPeriod(current_def, current_batches)
+    prior = _FluxPeriod(prior_def, prior_batches)
+    figure_by_key = {(f.metric_id, f.entity_id): f for f in figures}
+    entries = {(e.metric_id, e.entity_id): e for e in schedule.entries}
+    expected = {
+        (c.metric_id, c.entity_id) for c in comparatives
+        if c.change is not None
+        and (c.metric_id, c.entity_id) in figure_by_key
+    }
+    for key in sorted(expected | set(entries), key=str):
+        metric_id, entity_id = key
+        where = f" for {entity_id}" if entity_id else ""
+        entry = entries.get(key)
+        comparative = next(
+            (c for c in comparatives
+             if (c.metric_id, c.entity_id) == key), None)
+        if comparative is None:
+            fail(metric_id, entity_id,
+                 f"the flux schedule carries an entry for "
+                 f"{metric_id}{where}, but the pack has no "
+                 "comparative for it — flux explains comparatives, "
+                 "it does not invent them")
+            continue
+        if entry is None:
+            fail(metric_id, entity_id,
+                 f"the flux schedule has no entry for {metric_id}{where}, "
+                 "though the pack carries a comparative for it")
+            continue
+        figure = figure_by_key[key]
+        current_value = current.value(metric_id, entity_id)
+        prior_value = prior.value(metric_id, entity_id)
+        if D(entry.current_value) != current_value \
+                or D(entry.current_value) != D(figure.value):
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where} starts from current "
+                 f"value {entry.current_value}, but the sources produce "
+                 f"{money(current_value)} and the pack figure is "
+                 f"{figure.value}")
+        if D(entry.prior_value) != prior_value \
+                or D(entry.prior_value) != D(comparative.prior_value):
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where} starts from prior "
+                 f"value {entry.prior_value}, but the prior period's "
+                 f"sources produce {money(prior_value)} and the "
+                 f"comparative cites the signed {comparative.prior_value}")
+        if D(entry.movement) != D(comparative.change or "0"):
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where} decomposes movement "
+                 f"{entry.movement}, but the comparative's change is "
+                 f"{comparative.change}")
+        material = D(entry.movement) != ZERO and (
+            abs(D(entry.movement)) >= D(schedule.threshold_abs)
+            or (comparative.change_pct is not None
+                and abs(D(comparative.change_pct))
+                >= D(schedule.threshold_pct))
+        )
+        if entry.material != material:
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where} marks the movement "
+                 f"{'material' if entry.material else 'immaterial'}, "
+                 "but the schedule's own stated thresholds judge it "
+                 f"{'material' if material else 'immaterial'}")
+        if entry.definition_changed != comparative.definition_changed \
+                or entry.restated != comparative.restated:
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where} carries flags that "
+                 "disagree with its comparative")
+        movement = D(comparative.change or "0")
+        entity_lines = _flux_movement(
+            current.entity_shape(metric_id, entity_id),
+            prior.entity_shape(metric_id, entity_id), movement)
+        if _schedule_lines(entry.by_entity) != entity_lines:
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where}: the by-entity "
+                 "decomposition does not match the sources — the "
+                 "schedule says "
+                 f"{_schedule_lines(entry.by_entity)}, recomputation "
+                 f"produces {entity_lines}")
+        entity_sum = sum((D(line.amount) for line in entry.by_entity), ZERO)
+        if q(entity_sum) != movement:
+            fail(metric_id, entity_id,
+                 f"flux for {metric_id}{where}: the by-entity lines "
+                 f"sum to {money(entity_sum)}, not the movement "
+                 f"{money(movement)} they claim to explain")
+        account_current = current.account_shape(metric_id, entity_id)
+        account_prior = prior.account_shape(metric_id, entity_id)
+        if account_current is None or account_prior is None:
+            if entry.by_account is not None:
+                fail(metric_id, entity_id,
+                     f"flux for {metric_id}{where} decomposes by "
+                     "account, but the definition's shape allows no "
+                     "account split for this figure")
+        else:
+            account_lines = _flux_movement(account_current, account_prior,
+                                           movement)
+            if entry.by_account is None:
+                fail(metric_id, entity_id,
+                     f"flux for {metric_id}{where} carries no "
+                     "by-account decomposition, but the definition's "
+                     "shape allows one and the sources produce it")
+            elif _schedule_lines(entry.by_account) != account_lines:
+                fail(metric_id, entity_id,
+                     f"flux for {metric_id}{where}: the by-account "
+                     "decomposition does not match the sources — "
+                     f"the schedule says "
+                     f"{_schedule_lines(entry.by_account)}, "
+                     f"recomputation produces {account_lines}")
+            elif q(sum((D(line.amount) for line in entry.by_account),
+                       ZERO)) != movement:
+                fail(metric_id, entity_id,
+                     f"flux for {metric_id}{where}: the by-account "
+                     "lines do not sum to the movement "
+                     f"{money(movement)} they claim to explain")
+    return variances
 
 
 def verify_comparatives(comparatives: list[FigureComparative],

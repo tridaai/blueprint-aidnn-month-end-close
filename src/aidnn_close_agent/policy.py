@@ -10,6 +10,17 @@ live in the versioned definition pack instead; see
 
 from __future__ import annotations
 
+# Flux materiality: when a figure's period-over-period movement
+# counts as *material* — large enough that the board will ask why
+# it moved, so the flux schedule (see :mod:`.flux`) itemises its
+# drivers. A movement is material when it reaches either bar:
+# the absolute bar, in the figure's own currency, or the
+# percentage bar against the prior figure. The thresholds ride
+# every schedule the pack carries, so a reader never has to ask
+# which ruler judged a line.
+FLUX_MATERIAL_ABS = "50000.00"
+FLUX_MATERIAL_PCT = "10.00"
+
 # Source kinds every entity must deliver before a pack may be
 # built for the period. A missing kind keeps the run COLLECTING
 # and makes build attempts fail with ChecklistIncomplete.

@@ -159,6 +159,83 @@ class FigureComparative(BaseModel):
     change_pct: str | None = None  # change / prior × 100, 2dp
 
 
+class FluxContribution(BaseModel):
+    """One driver's share of a figure's movement.
+
+    ``kind`` names what the line is: an entity's contribution,
+    an account's contribution, the plan-baseline line of a
+    ``vs_plan`` figure, a group-level line (a figure whose
+    definition has no finer split — its whole movement rides
+    one line), or the named rounding line that absorbs the
+    residue when converted parts are summed against a converted
+    whole. ``amount`` is signed: the contribution to
+    ``current − prior``, in the figure's currency."""
+
+    key: str = ""  # entity_id, account, or "" for group-level lines
+    kind: Literal["entity", "account", "plan", "group", "rounding"]
+    label: str
+    amount: str  # Decimal as string, signed
+
+
+class FigureFlux(BaseModel):
+    """One figure's movement, explained: the flux entry.
+
+    The movement is the comparative's movement — current figure
+    minus the prior period's **signed** figure — decomposed two
+    ways: by entity, and by account where the figure's
+    definition bottoms out in GL accounts. Both decompositions
+    foot exactly: their lines sum to ``movement`` to the cent,
+    with any conversion residue on a named rounding line rather
+    than absorbed. ``by_account`` is ``None`` where the
+    definition's shape allows no account split (an elimination
+    is a pairing, not a sum of accounts; a CRM pipeline figure
+    has no accounts at all) — ``note`` says which and why.
+
+    Each period's side of the decomposition is computed under
+    that period's own definition-pack version, from that
+    period's source batches — the convention the restatement
+    recomputation already uses. When the versions differ the
+    entry carries ``definition_changed`` and the movement mixes
+    the definition change with trading movement; the schedule
+    names both versions in ``basis`` instead of pretending the
+    two were separated."""
+
+    metric_id: str
+    entity_id: str | None = None
+    currency: str
+    current_value: str
+    prior_value: str  # the signed figure, exactly as cited
+    movement: str     # current − prior, Decimal as string
+    movement_pct: str | None = None
+    material: bool = False
+    definition_changed: bool = False
+    restated: bool = False
+    basis: str = ""   # the definition versions each side stands on
+    by_entity: list[FluxContribution] = Field(default_factory=list)
+    by_account: list[FluxContribution] | None = None
+    note: str = ""
+
+
+class FluxSchedule(BaseModel):
+    """The pack's flux schedule: one entry per comparative
+    figure, the materiality ruler stated on its face.
+
+    A movement is material when it reaches either bar in
+    :mod:`.policy` — ``threshold_abs`` in the figure's own
+    currency, or ``threshold_pct`` against the prior figure.
+    Material entries carry their drivers ordered largest first;
+    immaterial entries are listed whole, without driver ordering
+    theatre."""
+
+    prior_period: str
+    prior_pack_id: str
+    current_definition_pack_version: str = ""
+    prior_definition_pack_version: str = ""
+    threshold_abs: str = ""
+    threshold_pct: str = ""
+    entries: list[FigureFlux] = Field(default_factory=list)
+
+
 class RestatedFigure(BaseModel):
     """One signed figure a restatement moved: what the board
     approved vs what the restated sources now produce."""
@@ -212,6 +289,15 @@ class BoardPack(BaseModel):
     # restatement report when the prior period's sources moved
     # after sign-off, and the controller's acknowledgement of it.
     comparatives: list[FigureComparative] = Field(default_factory=list)
+    # The flux schedule: every comparative figure's movement
+    # decomposed by entity and by account, footing exactly to
+    # the movement (see :mod:`.flux`). None when the pack has no
+    # comparatives, or when the prior period's definition-pack
+    # version is not on disk — a decomposition computed under
+    # the wrong definitions would be a fabrication, so the
+    # schedule degrades to absent, like the restatement
+    # recomputation does.
+    flux: FluxSchedule | None = None
     restatement: RestatementReport | None = None
     restatement_acknowledgement: Acknowledgement | None = None
     definition_pack_id: str = ""
