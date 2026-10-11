@@ -209,6 +209,7 @@ function packHtml(pack) {
       <td class="status st-${f.status}">${f.status}</td></tr>`).join("")
     + `</tbody></table>`;
   html += comparativesHtml(pack);
+  html += fluxHtml(pack);
   if (pack.narrative)
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
   if (pack.decision)
@@ -219,7 +220,7 @@ function packHtml(pack) {
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="secondary" data-evidence="${pack.pack_id}">Generate evidence bundle</button>
       </div>
-      <p class="note">The bundle is a projection of the stored record — every figure with its definition and verifier verdict, the source manifest with its recorded hashes, comparatives, and the sign-off. It regenerates byte-identically; the digest is the check.</p>
+      <p class="note">The bundle is a projection of the stored record — every figure with its definition and verifier verdict, the source manifest with its recorded hashes, comparatives, the flux schedule, and the sign-off. It regenerates byte-identically; the digest is the check.</p>
       <p class="note" id="evidence-error-${pack.pack_id}"></p>`;
   }
   if (pack.status === "AWAITING_CONTROLLER") {
@@ -277,6 +278,26 @@ function comparativesHtml(pack) {
         }).join("")
       + `</tbody></table>`;
   }
+  return html;
+}
+
+function fluxHtml(pack) {
+  const flux = pack.flux;
+  if (!flux) return "";
+  const fmt = (cur, v) => (Number(v) >= 0 ? "+" : "") + cur + " " + money(v);
+  let html = `<h2 style="margin-top:16px;">Flux — why it moved</h2>
+    <p class="note">Every movement decomposed by entity and by account; each decomposition foots to the movement exactly. Materiality: |movement| ≥ ${money(flux.threshold_abs)} or |change| ≥ ${money(flux.threshold_pct)}% — material movements carry their drivers, largest first. Each side computed under its own period's definitions (prior v${flux.prior_definition_pack_version} → current v${flux.current_definition_pack_version}).</p>`;
+  flux.entries.forEach(e => {
+    const flags = [e.material ? "MATERIAL" : "", e.definition_changed ? "definition changed" : "", e.restated ? "restated" : ""].filter(Boolean).join(" · ");
+    const pct = e.movement_pct === null ? "" : " (" + (Number(e.movement_pct) >= 0 ? "+" : "") + money(e.movement_pct) + "%)";
+    html += `<p style="margin-top:10px;"><strong>${e.metric_id}</strong> · ${e.entity_id || "consolidated"} · moved ${fmt(e.currency, e.movement)}${pct}${flags ? " · " + flags : ""}</p>`;
+    if (e.material) {
+      const drivers = (lines, title) => lines === null ? "" :
+        `<p class="note">${title}: ` + lines.map(l => `${l.label} ${fmt(e.currency, l.amount)}`).join(" · ") + `</p>`;
+      html += drivers(e.by_entity, "by entity") + drivers(e.by_account, "by account");
+    }
+    if (e.note) html += `<p class="note">${e.note}</p>`;
+  });
   return html;
 }
 

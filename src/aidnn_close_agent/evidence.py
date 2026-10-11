@@ -40,6 +40,19 @@ keys an auditor would sort them by, and no wall-clock field
 anywhere in the document — generation metadata (when, and the
 digest) lives on the bundle *record* in the store, so the same
 pack regenerates byte-identical bytes forever.
+
+The flux schedule (round 4) joins this bundle as a section
+**under the same v1 format**, and the precedent is the bundle's
+own: the comparative layer joined v1 the same way in round 2,
+because the format version names the bundle's schema family —
+a projection whose sections mirror the layers the pack itself
+carries — not a per-section changelog. A pack signed before
+flux existed carries ``flux: null`` forever (a signed pack is
+never edited), so its bundle says exactly that: this close
+predates the flux schedule. Bundles already generated are
+stored bytes beside their records and are never rewritten;
+what changes is only what a *new* generation projects from a
+pack that carries a schedule.
 """
 
 from __future__ import annotations
@@ -254,6 +267,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         "source_manifest": manifest,
         "fx_version": pack.source_versions.fx_version,
         "comparatives": comparatives,
+        "flux": pack.flux.model_dump() if pack.flux is not None else None,
         "restatement": pack.restatement.model_dump()
         if pack.restatement is not None else None,
         "restatement_acknowledgement":
@@ -383,6 +397,47 @@ def render_text(document: dict) -> str:
                 f"change {change_text}"
                 + (f" · {' · '.join(flags)}" if flags else "")
             )
+    flux = document.get("flux")
+    if flux is not None:
+        lines.append("")
+        lines.append(
+            f"FLUX SCHEDULE — every movement decomposed; materiality "
+            f"bars: |movement| ≥ {flux['threshold_abs']} or "
+            f"|change| ≥ {flux['threshold_pct']}% (prior period "
+            f"{flux['prior_period']}, signed pack "
+            f"{flux['prior_pack_id']}; definitions: prior "
+            f"v{flux['prior_definition_pack_version']} → current "
+            f"v{flux['current_definition_pack_version']}):"
+        )
+        for entry in flux["entries"]:
+            scope = entry["entity_id"] or "consolidated"
+            pct = entry["movement_pct"]
+            pct_text = f" ({pct}%)" if pct is not None else ""
+            flags = []
+            if entry["material"]:
+                flags.append("MATERIAL")
+            if entry["definition_changed"]:
+                flags.append("definition changed")
+            if entry["restated"]:
+                flags.append("restated")
+            lines.append(
+                f"  {entry['metric_id']} · {scope} · moved "
+                f"{entry['currency']} {entry['movement']}{pct_text}"
+                + (f" · {' · '.join(flags)}" if flags else "")
+            )
+            for driver in entry["by_entity"]:
+                lines.append(
+                    f"    by entity · {driver['label']}: "
+                    f"{driver['amount']}"
+                )
+            if entry["by_account"] is not None:
+                for driver in entry["by_account"]:
+                    lines.append(
+                        f"    by account · {driver['label']}: "
+                        f"{driver['amount']}"
+                    )
+            if entry["note"]:
+                lines.append(f"    note: {entry['note']}")
     if document["restatement"] is not None:
         restatement = document["restatement"]
         lines.append("")

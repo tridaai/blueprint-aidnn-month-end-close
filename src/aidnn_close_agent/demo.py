@@ -19,10 +19,17 @@ the definition change, detects the restatement by name — and
 its signature is held until the controller acknowledges the
 restatement on the record.
 
+October's pack also carries the flux schedule: every figure's
+movement against September decomposed by entity and by account,
+footing exactly, with the material movements' drivers named —
+each side computed under its own period's definition version,
+and the whole schedule recomputed independently by the
+verifier before the pack may pass.
+
 Each signed pack then generates its audit evidence bundle —
 the projection an external auditor re-performs from: figures
 with their definitions and verdicts, the source manifest with
-its recorded hashes, comparatives, restatement, sign-off.
+its recorded hashes, comparatives, flux, restatement, sign-off.
 """
 
 from __future__ import annotations
@@ -186,6 +193,21 @@ def _run_october(september_service: CloseService) -> None:
               f"{figure.currency} {figure.value:>12} vs signed "
               f"{comp.prior_value:>12}  Δ {change:<22} "
               f"{' · '.join(flags)}")
+
+    if pack.flux is not None:
+        print(f"\nFlux — the material movements, decomposed (bars: "
+              f"|movement| ≥ {pack.flux.threshold_abs} or |change| ≥ "
+              f"{pack.flux.threshold_pct}%):")
+        for entry in pack.flux.entries:
+            if not entry.material:
+                continue
+            scope = entry.entity_id or "consolidated"
+            drivers = "; ".join(
+                f"{line.label} {line.amount}"
+                for line in entry.by_entity if line.kind != "rounding"
+            )
+            print(f"  {entry.metric_id:<32} {scope:<12} "
+                  f"Δ {entry.movement:>12}  ← {drivers}")
 
     if pack.restatement is not None:
         print("\nThe restatement, as the pack names it:")
