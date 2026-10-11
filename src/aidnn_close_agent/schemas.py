@@ -345,6 +345,86 @@ class Acknowledgement(BaseModel):
     at: str = ""
 
 
+class Disposition(BaseModel):
+    """A named controller's acceptance of one blocking variance:
+    the break stands as the verifier computed it, and the close
+    proceeds anyway — carried into the next period, on the
+    record.
+
+    A disposition is governance *around* the verifier, never an
+    edit of its verdict: the variance it accepts stays on the
+    pack, word for word, and the pack that signs under it lists
+    the disposition on its face. The record names the exact
+    break accepted — code, entity, metric, subject, and the
+    variance's detail text, figures and all — so a break that
+    comes back with different figures is a different break and
+    is not covered by an acceptance written for the old one.
+
+    Dispositions are append-only. One governs a variance at a
+    time; changing an acceptance is a new record whose
+    ``supersedes`` names the record it replaces, never an edit
+    of it. There is no un-accept: an acceptance withdrawn in
+    substance is an acceptance re-written with its reason, and
+    the chain shows both.
+
+    ``origin_period`` / ``origin_pack_id`` name where the break
+    was *first* accepted, and ``carry_number`` counts its
+    acceptances: 1 for a fresh break, 2 when an item that
+    opened a period still breaks and is accepted again — the
+    second carry, stated plainly, because the third month of
+    the same break is a fact a CFO should see on the face."""
+
+    disposition_id: str
+    pack_id: str        # the pack the record was written on
+    run_id: str
+    period: str
+    code: str
+    entity_id: str | None = None
+    metric_id: str | None = None
+    subject: str = ""   # pair / elimination / journal, where the
+                        # code alone does not name the break
+    detail: str         # the variance's detail, exactly as computed
+    decision: Literal["ACCEPTED_CARRY"] = "ACCEPTED_CARRY"
+    actor: str
+    reason: str
+    at: str = ""
+    supersedes: str | None = None  # disposition_id replaced, if any
+    origin_period: str = ""
+    origin_pack_id: str = ""
+    carry_number: int = 1
+
+
+class OpeningItem(BaseModel):
+    """One carried break, opening the next period's close.
+
+    When a pack signs under dispositions, every acceptance on
+    its face becomes an opening item on the next period's pack:
+    the break is re-tested against the new period's sources and
+    the verdict recorded — ``CLEARED`` (no corresponding
+    variance in the new pack), ``STILL_PRESENT`` (the same
+    break, word for word, and it blocks again like any other
+    variance), or ``MUTATED`` (the same break's identity with
+    different figures — the break changed shape, and the old
+    acceptance does not cover the new one). The item quotes
+    the acceptance that carried it: who, why, from which
+    period, and which carry this is."""
+
+    code: str
+    entity_id: str | None = None
+    metric_id: str | None = None
+    subject: str = ""
+    detail: str                 # the break as it was accepted
+    origin_period: str
+    origin_pack_id: str
+    disposition_id: str         # the acceptance that carried it
+    dispositioned_by: str
+    reason: str                 # the acceptance's reason, quoted
+    carry_number: int = 1
+    retest: Literal["CLEARED", "STILL_PRESENT", "MUTATED"]
+    current_detail: str | None = None  # this period's wording of
+                                       # the break, when it recurs
+
+
 class BoardPack(BaseModel):
     """The close pack: figures, variances, versions, one decision.
 
@@ -382,6 +462,20 @@ class BoardPack(BaseModel):
     flux: FluxSchedule | None = None
     restatement: RestatementReport | None = None
     restatement_acknowledgement: Acknowledgement | None = None
+    # The disposition layer: acceptances recorded on this pack
+    # (a blocked pack collecting its governance) and, on a pack
+    # presented for sign-off under disposition, the acceptances
+    # that cover its blocking variances — copied onto its face
+    # at verification, so the signed record lists what was
+    # accepted, by whom, and why, next to the variances
+    # themselves, which stand exactly as computed.
+    dispositions: list[Disposition] = Field(default_factory=list)
+    # The carried breaks opening this pack: the prior signed
+    # pack's acceptances, re-tested against this period's
+    # sources by the verifier's own recomputation (see
+    # :class:`OpeningItem`). Empty on a first close and on any
+    # close whose predecessor signed clean.
+    opening_items: list[OpeningItem] = Field(default_factory=list)
     definition_pack_id: str = ""
     definition_pack_version: str = ""
     mart_version: str = ""
