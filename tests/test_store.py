@@ -8,7 +8,7 @@ import os
 import pytest
 
 from aidnn_close_agent.datasets import build_world
-from aidnn_close_agent.schemas import CloseRun
+from aidnn_close_agent.schemas import CloseRun, EvidenceBundle
 from aidnn_close_agent.store import InMemoryCloseStore, PostgresCloseStore
 
 
@@ -46,3 +46,14 @@ def test_postgres_store_round_trips(world):
     run = CloseRun(run_id="RUN-PG-TEST", period="2026-09")
     store.save_run(run)
     assert store.get_run("RUN-PG-TEST") == run
+    bundle = EvidenceBundle(
+        bundle_id="EVB-PACK-PG-TEST", pack_id="PACK-PG-TEST",
+        run_id="RUN-PG-TEST", period="2026-09",
+        json_key="evidence/2026-09/PACK-PG-TEST/evidence-v1.json",
+        text_key="evidence/2026-09/PACK-PG-TEST/evidence-v1.txt",
+        sha256="ab12", figure_count=25, manifest_count=8,
+        generated_at="2026-10-01T00:00:00+00:00",
+    )
+    store.save_bundle(bundle)
+    assert store.get_bundle("EVB-PACK-PG-TEST") == bundle
+    assert store.list_bundles(pack_id="PACK-PG-TEST") == [bundle]

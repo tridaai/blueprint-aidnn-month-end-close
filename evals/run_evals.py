@@ -44,6 +44,27 @@ restated post-sign-off. Its gates:
 - **history untouched** — the signed September pack is
   byte-identical at the end of everything.
 
+Both signed packs then generate their **audit evidence
+bundles** — the projection an external auditor re-performs
+from. Its gates:
+
+- **bundle complete** — the September bundle carries all 25
+  figures with the definition entry reproduced from the pack
+  version and the recorded verifier verdict, the full source
+  manifest (every stamped batch, at its version, with its
+  recorded hash), and the sign-off record with the checklist
+  state at signing;
+- **byte-identical regeneration** — the same pack regenerates
+  the same bytes and the same record;
+- **digest matches** — the record's SHA-256 is the digest of
+  the stored bundle bytes;
+- **generation refused for the blocked pack** — evidence for
+  an unsigned close is a false artifact and is refused with
+  the state named;
+- **the restated pack's bundle** — October's bundle carries
+  the comparatives with their signed-pack citations, the
+  restatement's affected figures, and the acknowledgement.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -51,6 +72,7 @@ the deployment's engine, not this code.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -75,7 +97,7 @@ from aidnn_close_agent.definitions import (  # noqa: E402
 )
 from aidnn_close_agent.demo import build_demo_service  # noqa: E402
 from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
-from aidnn_close_agent.errors import GateError  # noqa: E402
+from aidnn_close_agent.errors import EvidenceError, GateError  # noqa: E402
 from aidnn_close_agent.fx import D  # noqa: E402
 from aidnn_close_agent.graph import PackPipeline  # noqa: E402
 from aidnn_close_agent.service import CloseService  # noqa: E402
@@ -108,6 +130,15 @@ def evaluate() -> dict:
         service.sign_off(first.pack_id, "sign", "Eval Controller")
     except GateError:
         blocked_refused = True
+
+    # -- gate: no evidence bundle for an unsigned close ----------------
+    # Attempted now, while the first pack stands BLOCKED: an
+    # auditor bundle for it would be a false artifact.
+    blocked_evidence_refused = False
+    try:
+        service.generate_evidence(first.pack_id)
+    except EvidenceError as exc:
+        blocked_evidence_refused = "BLOCKED" in str(exc)
 
     # -- the late extracts land -----------------------------------------
     service.ingest(run.run_id,
@@ -172,6 +203,9 @@ def evaluate() -> dict:
             and service.get_run(run.run_id).status == "CLOSED"
     results["phase_b_status"] = second.status
 
+    evidence = _evaluate_evidence(service, signed)
+    results.update(evidence["results"])
+
     october = _evaluate_october(service, signed)
     results.update(october["results"])
 
@@ -183,10 +217,67 @@ def evaluate() -> dict:
         "traceability == 1.0": results["traceability"] == 1.0,
         "consolidation ties hold": all(ties.values()),
         "verified pack signs + run closes": sign_gate,
+        "evidence bundle complete": evidence["gates"]["complete"],
+        "evidence regenerates byte-identical":
+            evidence["gates"]["byte_identical"],
+        "evidence digest matches stored bytes":
+            evidence["gates"]["digest_matches"],
+        "evidence refused for the blocked pack": blocked_evidence_refused,
         **october["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
+
+
+def _evaluate_evidence(service, signed) -> dict:
+    """The audit evidence bundle for September's signed pack:
+    complete, digest-true, and byte-identical on regeneration."""
+    out: dict = {"results": {}, "gates": {
+        "complete": False, "byte_identical": False,
+        "digest_matches": False}}
+    if signed is None:
+        return out
+    record = service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+
+    pack_figures = {(f.metric_id, f.entity_id): f for f in signed.figures}
+    figures_ok = len(document["figures"]) == len(pack_figures) == 25 \
+        and all(
+            entry["value"]
+            == pack_figures[(entry["metric_id"], entry["entity_id"])].value
+            and entry["verifier_verdict"] == "verified"
+            and entry["definition"] == service.pack_def.metric(
+                entry["metric_id"]).model_dump()
+            for entry in document["figures"]
+        )
+    manifest = {m["batch_id"]: m for m in document["source_manifest"]}
+    manifest_ok = set(manifest) == set(signed.source_versions.batches) \
+        and all(
+            m["sha256"]
+            and m["sha256"] == service.store.get_batch(m["batch_id"]).sha256
+            and m["version"] == signed.source_versions.batches[m["batch_id"]]
+            for m in manifest.values()
+        )
+    sign_off_ok = (
+        document["sign_off"]["actor"] == "Eval Controller"
+        and document["sign_off"]["run_status"] == "CLOSED"
+        and document["sign_off"]["missing_sources"] == []
+    )
+    out["gates"]["complete"] = figures_ok and manifest_ok and sign_off_ok
+    out["gates"]["digest_matches"] = \
+        hashlib.sha256(data).hexdigest() == record.sha256
+
+    again = service.generate_evidence(signed.pack_id)
+    again_data, _ = service.evidence_download(signed.pack_id, "json")
+    out["gates"]["byte_identical"] = (
+        again.sha256 == record.sha256 and again_data == data
+        and again.generated_at == record.generated_at
+    )
+    out["results"]["evidence_figures"] = len(document["figures"])
+    out["results"]["evidence_manifest"] = len(document["source_manifest"])
+    out["results"]["evidence_sha256"] = record.sha256
+    return out
 
 
 def _evaluate_october(september_service, signed_september) -> dict:
@@ -202,6 +293,7 @@ def _evaluate_october(september_service, signed_september) -> dict:
             "unacknowledged restatement holds the signature": False,
             "acknowledged restatement signs": False,
             "signed prior pack byte-identical": False,
+            "restated bundle carries restatement + acknowledgement": False,
         }
         return out
 
@@ -274,6 +366,7 @@ def _evaluate_october(september_service, signed_september) -> dict:
     out["gates"]["unacknowledged restatement holds the signature"] = refused
 
     signs = False
+    signed_october = None
     if refused:
         service.acknowledge_restatement(
             pack.pack_id, "Eval Controller",
@@ -290,6 +383,35 @@ def _evaluate_october(september_service, signed_september) -> dict:
         store.get_pack(signed_september.pack_id).model_dump_json()
         == signed_json_at_sign_off
     )
+
+    # -- gate: the restated pack's evidence bundle --------------------
+    bundle_ok = False
+    if signed_october is not None:
+        record = service.generate_evidence(signed_october.pack_id)
+        data, _ = service.evidence_download(signed_october.pack_id, "json")
+        document = json.loads(data)
+        affected = {}
+        if document["restatement"] is not None:
+            affected = {
+                (f"{f['metric_id']}@{f['entity_id']}" if f["entity_id"]
+                 else f["metric_id"]):
+                    (f["signed_value"], f["recomputed_value"])
+                for f in document["restatement"]["affected_figures"]
+            }
+        bundle_ok = (
+            affected == RESTATEMENT_AFFECTED
+            and document["restatement_acknowledgement"] is not None
+            and document["restatement_acknowledgement"]["actor"]
+            == "Eval Controller"
+            and len(document["comparatives"]) == 25
+            and {c["prior_pack_id"] for c in document["comparatives"]}
+            == {signed_september.pack_id}
+            and hashlib.sha256(data).hexdigest() == record.sha256
+        )
+        out["results"]["october_evidence_sha256"] = record.sha256
+    out["gates"][
+        "restated bundle carries restatement + acknowledgement"
+    ] = bundle_ok
     out["results"]["october_status"] = pack.status
     return out
 

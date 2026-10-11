@@ -24,3 +24,11 @@ def test_eval_pack_passes():
     assert results["gates"]["comparatives tie to the signed pack"]
     assert results["gates"]["restatement named with gold figures"]
     assert results["gates"]["signed prior pack byte-identical"]
+    # Act three: the audit evidence bundles gate too.
+    assert results["evidence_figures"] == 25
+    assert results["gates"]["evidence bundle complete"]
+    assert results["gates"]["evidence regenerates byte-identical"]
+    assert results["gates"]["evidence digest matches stored bytes"]
+    assert results["gates"]["evidence refused for the blocked pack"]
+    assert results["gates"][
+        "restated bundle carries restatement + acknowledgement"]
