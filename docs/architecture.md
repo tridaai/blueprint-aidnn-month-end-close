@@ -88,7 +88,12 @@ for a given build, and every figure carries the version in its
 provenance — so "which revenue definition produced this pack?"
 is a field lookup, not an archaeology project. The eval pack
 reruns against the bundled pack on every change: that is the
-catalog-change regression suite.
+catalog-change regression suite. Old versions stay loadable
+by (pack id, version) through a registry lookup
+(`definitions.load_definition_pack_version`): the comparative
+layer needs them, because a prior period must always be
+recomputed — when it is recomputed at all — under the
+definitions that produced its signed pack.
 
 ## Marts: governed, stamped, disposable
 
@@ -192,6 +197,74 @@ signed pack is history: ingestion into a CLOSED run is refused
 outright, so the record of what was signed can never be made
 ambiguous after the fact.
 
+## Comparatives and restatement: the second month
+
+The first close is verified against its sources. Every close
+after that is *comparative*, and comparatives introduce a
+second object of trust: not this month's sources, but last
+month's **signed pack**. `comparatives.py` owns that layer.
+
+**Comparatives cite the record.** At build time the service
+looks up the prior period's signed pack (one calendar month
+back; the store keeps signed packs by period). In the verify
+step, each new figure gains a `FigureComparative`: the prior
+figure's value copied from the signed pack — with the pack id
+and the definition-pack version that produced it — and the
+change / % change computed in code (both `None` when the
+comparison is not meaningful: different currencies, or a zero
+prior). `verifier.verify_comparatives` then checks the layer
+against the record it cites: a comparative that does not equal
+the signed figure, to the cent, is a `COMPARATIVE_MISMATCH`
+and blocks the pack. The check deliberately does **not**
+recompute the prior period from its sources — those sources
+may have been restated, and a silent recompute would present
+the corrected number as the number the board approved. The
+signed record is the board's history; comparatives quote it.
+
+**Restatement is detected off the supersession chain.** A
+corrected extract for a signed period cannot be ingested into
+its run — the run is CLOSED and refuses (see staleness above).
+It arrives through `receive_restatement`: archived, stored,
+attached to nothing. At the next period's build, the service
+walks the supersession chain from each batch the signed pack
+was stamped with; a terminal successor the signed pack never
+saw means the prior period's sources have moved. The prior
+period is then recomputed — by the verifier, under the prior
+period's *own* definition-pack version (loaded from the pack
+registry; versions are files, never edits) — over the restated
+source set, and every signed figure that fails to reproduce is
+listed in a `RestatementReport`: signed value vs recomputed
+value. The new pack carries a `RESTATED_PRIOR_PERIOD`
+variance, and its comparatives for the moved figures are
+flagged `restated` — while still showing the signed values,
+because those are what the board approved. The signed pack
+itself is never modified; the eval pack asserts byte-identity
+of the signed record across the whole second act.
+
+**The acknowledgement gate.** A restatement does not block
+the new pack's figures — they are this period's, and they
+verify. It blocks the *signature*: `sign_off` refuses while a
+pack carries an unacknowledged restatement, and
+`acknowledge_restatement` (named controller, mandatory note,
+audited on the pack) is what releases it. The variance is not
+deleted on acknowledgement — it stays on the pack record
+permanently, next to the acknowledgement. This mirrors how a
+real close treats a prior-period adjustment the board has
+seen: disclosed, owned by a name, and never quietly absorbed.
+
+**Definition discipline across versions.** When the new
+period runs under a newer definition-pack version, the
+comparative layer compares the two packs and flags every
+comparative whose metric changed meaning: its own definition
+differs, an elimination it reads was redefined, a `vs_plan`
+baseline moved, or anything it derives from changed
+(transitively). October runs under v1.1.0 (operating expenses
+gained account 6400, insurance; the revenue plan moved), and
+its opex family, operating income, and revenue-vs-plan
+comparatives carry the flag with both versions cited on the
+pack. A metric absent from either period simply has no
+comparative — invention is not an option here either.
+
 ## The gate: segregation as structure
 
 The LangGraph pipeline (`graph.py`) has three nodes that matter:
@@ -206,9 +279,12 @@ The LangGraph pipeline (`graph.py`) has three nodes that matter:
 
 The controller's decision arrives through the service
 (`sign_off`), which validates the human (a name is required),
-the pack's state (AWAITING_CONTROLLER only), and the stamps
-(current sources) before resuming the graph. Three roles,
-three code paths, no shared "just proceed" switch anywhere.
+the pack's state (AWAITING_CONTROLLER only), the stamps
+(current sources), and — from the second month on — the
+restatement gate (an unacknowledged restatement of the prior
+period holds the signature) before resuming the graph. Three
+roles, three code paths, no shared "just proceed" switch
+anywhere.
 
 ## Data model
 
@@ -218,7 +294,9 @@ the sibling blueprints' record discipline:
 - `source_batches` — every extract ever ingested, append-only;
 - `close_runs` — run state incl. the checklist and slot map;
 - `board_packs` — figures, variances, stamps, narrative,
-  sign-off.
+  sign-off, and (from the second period) the comparative
+  layer: cited prior figures, the restatement report, and its
+  acknowledgement.
 
 Raw extract bytes are additionally archived to object storage
 at ingestion (`extracts/<period>/<batch_id>.json`), so the

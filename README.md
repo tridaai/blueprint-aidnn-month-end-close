@@ -64,7 +64,12 @@ no counterpart, an AR tie-out gap where a services billing was
 posted to payroll. Then the corrected extracts land late, the
 first pack goes **stale by its version stamps**, and the rebuilt
 pack verifies figure for figure — where a named controller
-signs it. It runs on the **offline reference engine**; see
+signs it. A second act closes **October**: September's parent
+extract is restated after sign-off, the definition pack has
+been upgraded, and October's pack presents every figure against
+September's *signed* figures — restatement named, signature
+held until a controller acknowledges it. It runs on the
+**offline reference engine**; see
 [Configuration](#configuration) for the aidnn seam.
 
 Serve the console instead:
@@ -167,6 +172,31 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   the builder raises on any unverified input, so a blocked pack
   has no narrative and no number can be talked into the board
   pack that the verifier has not recomputed.
+- **Comparatives from the signed record** — from the second
+  month on, every figure carries a comparative: the prior
+  period's figure **copied from the prior period's signed
+  pack**, with the pack id and definition version cited, plus
+  the change and % computed in code. The comparative is
+  *checked against the signed record* exactly — never
+  recomputed over prior sources, which may have been restated
+  since the board approved them.
+- **Restatement, named and gated** — a corrected extract for
+  an already-signed period arrives outside any run (signed
+  history is never edited). At the next build, the prior period
+  is recomputed under *its own* definition-pack version over
+  the restated sources; every signed figure that no longer
+  reproduces is listed — signed vs recomputed — in a
+  `RESTATED_PRIOR_PERIOD` variance. The new pack's signature is
+  **refused until a named controller acknowledges the
+  restatement** on the record; the variance and the
+  acknowledgement then stay on the pack permanently.
+- **Definition changes are flagged, not smoothed over** — when
+  a period runs under a newer definition-pack version,
+  comparatives whose metric (or anything it derives from, or
+  its plan baseline) was redefined carry a `DEFINITION_CHANGED`
+  flag with both versions named. October runs under pack
+  v1.1.0, which widened operating expenses to include
+  insurance; September's comparatives say so.
 
 ## The aidnn seam
 
@@ -211,10 +241,18 @@ Copy `.env.example` to `.env` and set what you use:
   offline engine is what the tests, evals, and demo actually
   run — and the verifier's guarantee does not depend on which
   engine proposed the figures.
-- The synthetic sources are **single-period extracts**: one
-  month of journals per entity, AR summaries, one rate table,
-  one CRM snapshot. A customer deployment's connectors pull
-  the same shapes from the real systems on the close calendar.
+- The synthetic sources cover **two periods** (September and
+  October 2026) plus one post-sign-off restatement: one month
+  of journals per entity per period, AR summaries, a rate
+  table, a CRM snapshot. A customer deployment's connectors
+  pull the same shapes from the real systems on the close
+  calendar, period after period; the comparative machinery
+  keys off the period on the run, so a third month needs no
+  new code.
+- Comparatives look back exactly one period — the board-pack
+  convention this blueprint implements. Longer trend columns
+  would cite the same signed records the same way, but are
+  not built here.
 - The definition pack's formula language is deliberately
   small (base aggregates + five derived ops). A deployment
   that needs a new op adds it in code, reviewed — definitions
@@ -242,6 +280,17 @@ gates on it:
 - **Consolidation ties** — consolidated figures tie to the
   entity figures through the pack's own identities, checked in
   the eval's independent arithmetic.
+- **October gold figures** — the second month's 25 figures,
+  under definition pack v1.1.0, exact.
+- **Comparatives tie to the signed pack** — all 25 October
+  comparatives equal the signed September figures they cite.
+- **Definition changes flagged** — exactly the comparatives
+  crossing the v1.0.0 → v1.1.0 change carry the flag.
+- **Restatement named** — the planted September restatement
+  surfaces with its five affected figures at gold values
+  (signed vs recomputed); sign-off refuses while it is
+  unacknowledged and succeeds after acknowledgement; the
+  signed September pack is byte-identical at the end.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -256,13 +305,14 @@ src/aidnn_close_agent/
   definitions.py    versioned definition packs (catalog as data)
   marts.py          governed marts: normalization, DQ rules, stamps
   verifier.py       the independent recomputation — separate code path
+  comparatives.py   prior-period comparatives, restatement detection
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate
   service.py        runs, ingestion, staleness, sign-off discipline
   store.py / db.py  batches, runs, packs in Postgres (or the double)
   datasets.py       the synthetic Harborlight world — gold by construction
-  definition_packs/ the bundled catalog (harborlight-close v1.0.0)
+  definition_packs/ the bundled catalog (harborlight-close v1.0.0 + v1.1.0)
 migrations/         numbered SQL, applied at startup
 evals/              the golden close pack and its runner
 docs/               architecture.md — the deployment, in depth
