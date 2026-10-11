@@ -151,7 +151,9 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   the pack's semantics that reads **source batches directly,
   never the marts**, and recomputes every figure. It also runs
   its own structural checks: duplicate journal ids, AR-to-GL
-  tie-outs, intercompany leg pairing. Any variance — or any
+  tie-outs, intercompany leg pairing at two grains — the
+  pooled totals, and each pair keyed by counterparty. Any
+  variance — or any
   figure it cannot reproduce — blocks the pack by name. Honest
   limit, stated in the open: a figure that foots to a *wrong*
   source recomputes cleanly; what catches that class is the
@@ -225,6 +227,30 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   that blocks the pack. The narrative quotes flux only after
   that check, and only for entries that tie to verified
   figures.
+- **Intercompany agreement, pair by pair** — an elimination
+  nets whatever the two sides of an internal trade booked, so
+  the verifier checks that the two sides actually mirror. For
+  every intercompany pair in the period's sources — keyed by
+  counterparty against the pack's elimination definitions —
+  the seller's stated revenue leg is compared with the buyer's
+  stated cost leg, judged in the **seller's currency** (the
+  invoice currency) with the buyer's amount translated once at
+  the close's own rate table, so agreement means agreement to
+  the cent on the close's stated basis, never a comparison of
+  two converted totals. Each pair lands **AGREED**,
+  **IC_DISAGREEMENT** (both legs booked, different amounts), or
+  **IC_ONE_SIDED** (a leg one entity booked and the other never
+  did — a different failure, named separately); an open pair
+  blocks the pack like any other variance, carrying both
+  figures, both entities, and the difference. Neither entity's
+  own figures are restated — the variance says plainly that the
+  fix is a booking conversation between the entities — but the
+  consolidated figures whose arithmetic touches a disputed
+  pair's legs (the elimination, the consolidated intercompany
+  revenue, and what derives from them) carry an
+  `ic_disagreement` flag tying them to the open pair. The pairs
+  ride the pack, the console's pairs table, and the evidence
+  bundle.
 - **The audit evidence pack** — a signed pack can generate
   one bundle an external auditor can re-perform from: every
   figure with its definition entry reproduced and the
@@ -322,7 +348,7 @@ gates on it:
   gold close-question answers exactly (Decimal-exact), from
   per-entity revenue to consolidated operating income.
 - **Planted traps, named** — the first attempt's pack is
-  BLOCKED with exactly `DUPLICATE_JOURNAL`,
+  BLOCKED with exactly `DUPLICATE_JOURNAL`, `IC_ONE_SIDED`,
   `UNMATCHED_IC_LEG`, and `SUBLEDGER_TIE_OUT`.
 - **Staleness** — the first pack goes STALE when the corrected
   extracts land, and refuses sign-off at every stage.
@@ -356,6 +382,15 @@ gates on it:
   bundle carries the schedule's 25 entries while September's
   — a close that predates the schedule — states `flux: null`
   in the same bundle format.
+- **Intercompany agreement** — September's first attempt
+  names its planted pair one-sided; both signed packs carry
+  exactly the one HLD → HLE pair, AGREED with the stated
+  figures exact, and both bundles carry the intercompany
+  section. A staged variant October — HLE booking the
+  purchase €500 light — blocks on exactly one
+  `IC_DISAGREEMENT` naming both figures and the $560.00
+  difference, flags exactly the consolidated figures standing
+  on the pair, and leaves every entity figure at its gold.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.

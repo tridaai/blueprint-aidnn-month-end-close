@@ -132,12 +132,37 @@ Its checks, in order:
 
 1. **Data quality** — its own scan for repeated journal ids:
    `DUPLICATE_JOURNAL`, naming entity, journal, and extract.
-2. **Elimination pairing** — IC legs summed per entity from raw
-   lines, converted per entity; revenue legs ≠ cost legs →
-   `UNMATCHED_IC_LEG`, naming both totals and the gap.
-3. **Tie-outs** — subledger vs GL per entity: `SUBLEDGER_TIE_OUT`,
+2. **Elimination pairing, aggregate** — IC legs summed per
+   entity from raw lines, converted per entity; revenue legs ≠
+   cost legs → `UNMATCHED_IC_LEG`, naming both totals and the
+   gap.
+3. **Intercompany agreement, per pair** — the same legs, keyed
+   by counterparty against each elimination definition: the
+   seller's IC-flagged credits on the revenue account flagged
+   to the buyer, against the buyer's IC-flagged debits on the
+   cost account flagged to the seller. The comparison runs in
+   the **seller's currency** — the invoice currency — with the
+   buyer's stated amount translated once at the run's rate
+   table (the single table every figure in the close converts
+   with), so the verdict is agreement to the cent on the
+   close's own stated basis; comparing two converted
+   consolidated totals instead would judge the elimination's
+   output, not the two bookings. A pair with both legs and
+   different amounts → `IC_DISAGREEMENT`, naming both stated
+   figures, the basis figure, and the difference; a leg with
+   no counterpart → `IC_ONE_SIDED`, naming the present side
+   and the missing one. The two grains are complementary: the
+   aggregate cannot tell one-sided from disagreed, and reads a
+   leg flagged to the wrong counterparty as paired; the pair
+   check names both. An open pair also flags the pack's
+   consolidated figures whose derivation touches the disputed
+   elimination (`ic_disagreement` on the figure) — entity
+   figures are never flagged or restated; the variance text
+   says the fix is a booking conversation between the
+   entities.
+4. **Tie-outs** — subledger vs GL per entity: `SUBLEDGER_TIE_OUT`,
    naming both amounts and the gap.
-4. **Figure reproduction** — every defined figure recomputed;
+5. **Figure reproduction** — every defined figure recomputed;
    any difference from the engine's proposal →
    `FIGURE_MISMATCH`, naming both values. A figure the engine
    omitted, or one the pack does not define, is a mismatch too.
@@ -386,6 +411,8 @@ time); the source manifest — every batch the pack stamps, with
 kind, entity, version, and the content hash recorded on the
 batch at ingestion; the comparatives with their citations;
 the flux schedule, when the pack carries one; the
+intercompany pairs with both stated figures and their
+verdicts, when the pack carries them; the
 restatement report and its acknowledgement; the standing
 variances; and the sign-off record — decision, controller,
 reason, time — with the run's checklist state.
@@ -398,7 +425,12 @@ the pack itself carries; it is not a per-section changelog.
 A pack signed before the flux schedule existed carries no
 schedule and never will (a signed pack is never edited), so
 its bundle states `flux: null` — the honest record that this
-close predates the layer. Bundles already generated are
+close predates the layer. The intercompany section joins by
+the same rule (`intercompany: null` for a pack whose record
+carries no pairs); since a disagreement blocks sign-off, a
+signed pack's section shows the pairs that agreed — the
+disagreements sit on the blocked packs that never earn a
+bundle, named in their variances. Bundles already generated are
 stored bytes beside their records and are never rewritten;
 a new generation simply projects what its pack carries. That last item
 deserves its argument: the checklist is not stamped on the
