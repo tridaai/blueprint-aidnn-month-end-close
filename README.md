@@ -203,6 +203,34 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   **refused until a named controller acknowledges the
   restatement** on the record; the variance and the
   acknowledgement then stay on the pack permanently.
+- **Variance disposition: the second honest exit** — a blocked
+  pack has always had one exit: fix the books and rebuild.
+  Real closes have another, and it is built as governance, not
+  as a dismiss button. A named controller may accept a
+  blocking variance in writing — actor and reason required,
+  the record naming the exact break (code, entity, metric,
+  subject, and the variance's own detail text, figures and
+  all) — as `ACCEPTED_CARRY`. Recording changes neither the
+  variance nor the blocked pack: the close's next build
+  re-verifies from source and is presented for sign-off only
+  when **every** blocking variance is covered by an
+  acceptance, with the acceptances copied onto the pack's
+  face — count and items — beside the variances, which stand
+  exactly as computed. Only blocking variances are
+  dispositionable: the restatement variance holds a signature,
+  not a pack, and keeps its own governance (the
+  acknowledgement); the definition and rate flags are not
+  variances at all, and there is nothing to accept. Acceptances
+  are append-only — changing one is a new record superseding
+  the old, never an edit, and there is no un-accept. And an
+  accepted break is carried, not forgotten: every acceptance
+  on a signed pack's face opens the next period as a named
+  **opening item**, re-tested against the new period's own
+  recomputation — cleared by events, still present (it blocks
+  again, and a second acceptance states plainly that it is
+  carry 2, with the first acceptance's period, controller, and
+  reason quoted), or mutated (the same break with different
+  figures — the old acceptance does not cover the new one).
 - **Definition changes are flagged, not smoothed over** — when
   a period runs under a newer definition-pack version,
   comparatives whose metric (or anything it derives from, or
@@ -287,7 +315,8 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   from ingestion), the comparatives and the signed pack they
   cite, the **rate provenance** (both closes' stamped rate
   tables and the rates that moved between them), the flux schedule, any restatement and its
-  acknowledgement, and the sign-off record with the checklist
+  acknowledgement, any dispositions on the pack's face and the
+  opening items it carried in, and the sign-off record with the checklist
   state the signature froze. The bundle is a **projection of stored records** —
   it recomputes nothing — it is refused for anything but a
   `SIGNED_OFF` pack (state named), it is checked for
@@ -340,7 +369,9 @@ Copy `.env.example` to `.env` and set what you use:
   run — and the verifier's guarantee does not depend on which
   engine proposed the figures.
 - The synthetic sources cover **two periods** (September and
-  October 2026) plus one post-sign-off restatement: one month
+  October 2026) plus one post-sign-off restatement — and a
+  third staged month, November, which is October's trading one
+  month on and exists to exercise the disposition carry: one month
   of journals per entity per period, AR summaries, a rate
   table, a CRM snapshot. A customer deployment's connectors
   pull the same shapes from the real systems on the close
@@ -433,6 +464,20 @@ gates on it:
   still reproduces every figure at the stamp; figures
   re-stamped with a table they were not computed at are
   named per figure as converted off-stamp.
+- **Variance disposition** — a fifth act accepts the staged
+  October disagreement in writing: disposition without a
+  named controller or a reason is refused, each refusal
+  naming its ground; `DEFINITION_CHANGED` cannot be
+  dispositioned (it is a flag, not a variance); with one of
+  the break's two variances still unaccepted the rebuild
+  stays BLOCKED and sign-off refuses; with both accepted the
+  pack presents and signs, its variances identical to the
+  blocked pack's word for word, and both acceptances listed
+  on the signed face and in its evidence bundle. November
+  then opens both carried items — origin period, controller,
+  and reason quoted — retests them STILL_PRESENT, blocks
+  again, and a second acceptance signs with carry 2 stated
+  on the face.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -448,6 +493,7 @@ src/aidnn_close_agent/
   marts.py          governed marts: normalization, DQ rules, stamps
   verifier.py       the independent recomputation — separate code path
   comparatives.py   prior-period comparatives, restatement detection
+  dispositions.py   variance disposition: acceptances, coverage, the carry
   evidence.py       the audit evidence pack: gated, checked projection
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function

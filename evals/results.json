@@ -29,7 +29,7 @@
   },
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "36a43c937063fce5771bc87a0e4141bebc065469d4ee5b62184ae3dde47f4e6b",
+  "evidence_sha256": "24cb128ee5eb0b6bf2214ce068bdef5695f52d0f6e911e323ce3f3b827727952",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -82,7 +82,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "f16fd6a99e379dbff6ef44a6e6fc613fc8e3ecd7b88eb585aced814b6326bf8c",
+  "october_evidence_sha256": "3a8c3dec1393f3f6b30a51463b0e95703156bc85b1f4fe3a84b0efea77acfc77",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -131,7 +131,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T22:51:45.480872+00:00",
+      "at": "2026-10-11T22:53:03.124703+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -150,7 +150,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T22:51:45.486789+00:00",
+      "at": "2026-10-11T22:53:03.131974+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -203,7 +203,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T22:51:45.523672+00:00",
+      "at": "2026-10-11T22:53:03.167829+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -222,7 +222,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T22:51:45.523748+00:00",
+      "at": "2026-10-11T22:53:03.167874+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",

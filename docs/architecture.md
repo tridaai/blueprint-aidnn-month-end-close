@@ -413,6 +413,111 @@ period holds the signature) before resuming the graph. Three
 roles, three code paths, no shared "just proceed" switch
 anywhere.
 
+## Variance disposition: governance around the verdict
+
+Until round 7, a blocking variance had exactly one exit:
+fix the books and rebuild. Real closes have a second honest
+exit — a controller reviews the break, judges it immaterial
+or a known timing difference, accepts it in writing, and the
+item is carried into the next period as an opening item that
+must clear there. The design work is keeping that exit from
+becoming a dismiss button, and the load-bearing decision is
+where the layer lives: **in the service, around the
+verifier — never inside it.** The verifier's code does not
+know dispositions exist. A variance it computes stands on
+every pack that computes it, word for word, whether or not
+anyone has accepted it; the eval pins this by comparing the
+signed-under-disposition pack's variances and figures to the
+blocked pack's, exactly.
+
+The record (`dispositions.py`, `Disposition` in
+`schemas.py`) names the exact break accepted: code, entity,
+metric, a *subject* where those do not suffice (the pair, the
+elimination, the journal — read from the record the verifier
+produced, in its own wording), and the variance's detail text
+itself. Coverage is therefore exact, not thematic: an
+acceptance written for a $560.00 disagreement does not cover
+the same pair disagreeing by $1,120.00 next month. Actor and
+reason are required, and the refusals name their grounds —
+an unnamed controller, a missing reason, a pack that is not
+BLOCKED, a code the pack does not carry. The taxonomy is the
+pipeline's own: *blocking* is every variance that holds a
+pack at BLOCKED. The one variance that is not blocking,
+`RESTATED_PRIOR_PERIOD`, is refused by name — it holds a
+signature, not a pack, and already has its governance in the
+acknowledgement; letting a disposition swallow it would give
+one break two competing records. The informational flags
+(`DEFINITION_CHANGED`, `RATE_CHANGED`) are not variances at
+all, and the refusal for them is the taxonomy's: there is no
+blocking variance by that name to accept.
+
+Recording a disposition changes neither the variance nor the
+pack — the blocked pack stays BLOCKED, its record now
+carrying the acceptance in an append-only list. What a
+disposition governs is the close's *next build*: the service
+prepares the run's governing acceptances (each supersession
+chain reduced to its head) into the build context, and the
+verify node — after the verdict is fully computed, variances,
+comparatives, flux, and restatement alike — checks coverage.
+Every blocking variance covered: the pack is presented for
+sign-off (`AWAITING_CONTROLLER`) with the covering
+acceptances copied onto its face, and an audit entry states
+that the verdict stands and names each acceptance. Any one
+uncovered: BLOCKED, exactly as before. Two consequences are
+deliberate. First, there is no path where a disposition
+mutates a pack into signability in place — the presented
+pack is a fresh verification from source, so what signs is
+always a pack the verifier actually computed. Second, a
+disposition that is never needed (the books get fixed and
+the rebuild verifies clean) simply never reaches a signed
+face — and, per the carry rule below, carries nothing.
+
+Changing an acceptance is a new record whose `supersedes`
+names the record it replaces, on the append-only idiom the
+store already keeps for batches. There is deliberately no
+un-accept: a controller who reconsiders writes the new
+reason, and the chain shows both readings. (An acceptance
+also cannot be withdrawn by superseding it with an empty
+record — a superseding record is itself an acceptance, with
+actor and reason, or it is refused like any other.)
+
+The carry is the layer's second half. Only acceptances that
+reached a **signed pack's face** carry — they are the ones a
+signature relied on. At the next period's build, the service
+prepares them as the build's carried set, and the verify
+node re-tests each against the new pack's own variances:
+an exact match is `STILL_PRESENT` (the item blocks again,
+like any variance), an identity match with different detail
+is `MUTATED` (same break, different figures — not covered
+by the old acceptance, by the exactness rule above), and no
+match is `CLEARED` — cleared *by events*, the only way an
+item ever leaves, since nothing in the layer deletes one.
+Each outcome lands on the new pack as an `OpeningItem`
+quoting the acceptance that carried it: origin period and
+pack, the controller, the reason, and the carry count.
+Accepting a still-breaking (or mutated) carried item again
+inherits the lineage: the new record's `carry_number` is the
+item's plus one, its origin still the first acceptance — so
+the signed face of the third month's pack states, in data,
+that this is the same break's second carry. Age is not an
+annotation added for color; it is the fact a CFO reads first
+about a carried break, so it is computed, not narrated.
+
+One surface needed care: the narrative. A pack presented
+under disposition may carry figures that all verify while a
+pair stands in disagreement — and the narrative's
+eliminations sentence speaks of legs "verified present and
+paired", which would be false on such a pack; its builder
+also raises on any unverified figure, which a dispositioned
+figure mismatch is. The presented path therefore builds the
+narrative only where it cannot misstate (every figure
+verified, no open pair, no flux failure) and otherwise
+leaves it absent, with the audit trail saying why: on such a
+pack, the account of the close is the variances and the
+acceptances, both on the face. The evidence bundle's
+completeness rule bends in exactly the same place and no
+further — see the next section.
+
 ## The audit evidence pack: projection, not computation
 
 A signed pack is the close's internal record. The auditors,
@@ -440,7 +545,9 @@ batch at ingestion; the comparatives with their citations;
 the flux schedule, when the pack carries one; the
 intercompany pairs with both stated figures and their
 verdicts, when the pack carries them; the
-restatement report and its acknowledgement; the standing
+restatement report and its acknowledgement; the dispositions
+on the pack's face and the opening items it carried in, when
+it carries them; the standing
 variances; and the sign-off record — decision, controller,
 reason, time — with the run's checklist state.
 
@@ -454,10 +561,15 @@ schedule and never will (a signed pack is never edited), so
 its bundle states `flux: null` — the honest record that this
 close predates the layer. The intercompany section joins by
 the same rule (`intercompany: null` for a pack whose record
-carries no pairs); since a disagreement blocks sign-off, a
-signed pack's section shows the pairs that agreed — the
-disagreements sit on the blocked packs that never earn a
-bundle, named in their variances. Bundles already generated are
+carries no pairs); a disagreement blocks sign-off, so a
+cleanly signed pack's section shows the pairs that agreed —
+and since round 7, a pack signed *under disposition* shows
+the disputed pair too, with the disposition that accepted it
+listed in the bundle's dispositions section beside the
+variance it answers for: the two records travel together or
+not at all. The dispositions and opening-items sections join
+by the same rule again (`null` for a pack that carries
+neither). Bundles already generated are
 stored bytes beside their records and are never rewritten;
 a new generation simply projects what its pack carries. That last item
 deserves its argument: the checklist is not stamped on the
@@ -481,7 +593,16 @@ Two gates guard generation:
   hash; the run must be CLOSED with no missing sources; every
   comparative's cited pack must stand in the store as signed;
   a restatement must carry its acknowledgement. Any gap
-  refuses generation, naming the gap. A partial bundle is
+  refuses generation, naming the gap. The verdict clause has
+  exactly one exception, and it is the disposition layer's:
+  a figure may stand with a verdict other than `verified`
+  when the variance naming that figure is itself on the pack
+  and a disposition on the pack's face covers that exact
+  variance — the figure is then shown with its true verdict
+  and its named acceptance, never upgraded to `verified`,
+  and an acceptance covering no variance on the pack refuses
+  the bundle as decoration. Any other unexplained verdict
+  refuses as it always has. A partial bundle is
   never written — the failure mode this defends against is
   the partially-stored pack (an interrupted write, an archived
   store restored without its batches) producing a
@@ -521,7 +642,11 @@ blueprints' record discipline:
 - `board_packs` — figures, variances, stamps, narrative,
   sign-off, and (from the second period) the comparative
   layer: cited prior figures, the restatement report, and its
-  acknowledgement;
+  acknowledgement; and the disposition layer: the acceptances
+  recorded on the pack or carried onto its face, and the
+  opening items it was re-tested against. Both ride the
+  JSONB payload — no migration; the store's shape was already
+  "the pack record, whole";
 - `evidence_bundles` — one row per generated audit bundle
   (`0002_evidence_bundles.sql`): pack and period for lookup,
   the object-store keys, the digest, the counts, and the
