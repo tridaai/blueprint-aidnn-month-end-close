@@ -78,7 +78,11 @@ class SourceBatch(BaseModel):
     entity_id: str | None = None  # None for group-level kinds (fx, crm)
     version: int = 1
     supersedes: str | None = None
-    phase: Literal["initial", "late"] = "initial"
+    # "restatement": a corrected extract for a period whose pack is
+    # already signed — it lands outside any open run and is picked
+    # up by the next period's comparative check, never by editing
+    # the signed record.
+    phase: Literal["initial", "late", "restatement"] = "initial"
     journals: list[Journal] = Field(default_factory=list)
     ar_billings: list[ArBilling] = Field(default_factory=list)
     rate_table: RateTable | None = None
@@ -125,6 +129,70 @@ class SignOff(BaseModel):
     at: str = ""
 
 
+class FigureComparative(BaseModel):
+    """One figure's comparative: this period's value against the
+    prior period's **signed** figure.
+
+    The prior value is copied from the signed pack record — the
+    numbers the board actually approved — never recomputed from
+    prior-period sources, which may have been restated since.
+    ``change`` / ``change_pct`` are computed here, in code, from
+    those two values; both are ``None`` when the comparison is
+    not meaningful (currencies differ, or the prior value is
+    zero). ``definition_changed`` names the silent-error case: the
+    metric's definition (or one it derives from, or its plan
+    baseline) differs between the two packs' definition-pack
+    versions, so the two numbers were not produced by the same
+    rule. ``restated`` marks a figure the prior period's
+    restatement touched — the comparative still shows the signed
+    value, flagged, because that is what the board approved."""
+
+    metric_id: str
+    entity_id: str | None = None
+    prior_value: str  # Decimal as string — the signed figure, exactly
+    prior_currency: str
+    prior_pack_id: str  # the signed pack the comparative cites
+    prior_definition_pack_version: str = ""
+    definition_changed: bool = False
+    restated: bool = False
+    change: str | None = None      # current − prior, Decimal as string
+    change_pct: str | None = None  # change / prior × 100, 2dp
+
+
+class RestatedFigure(BaseModel):
+    """One signed figure a restatement moved: what the board
+    approved vs what the restated sources now produce."""
+
+    metric_id: str
+    entity_id: str | None = None
+    signed_value: str
+    recomputed_value: str
+    currency: str
+
+
+class RestatementReport(BaseModel):
+    """A prior period's sources no longer reproduce its signed
+    pack. The signed pack is never altered; the report rides the
+    *next* period's pack, whose sign-off is refused until a named
+    controller acknowledges it."""
+
+    prior_period: str
+    prior_pack_id: str
+    restated_batch_ids: list[str] = Field(default_factory=list)
+    affected_figures: list[RestatedFigure] = Field(default_factory=list)
+
+
+class Acknowledgement(BaseModel):
+    """A named human's recorded acknowledgement — of a
+    restatement, here. It changes nothing about the record it
+    acknowledges; it unblocks the gate that was waiting on a
+    human having seen the thing."""
+
+    actor: str
+    note: str
+    at: str = ""
+
+
 class BoardPack(BaseModel):
     """The close pack: figures, variances, versions, one decision.
 
@@ -139,6 +207,13 @@ class BoardPack(BaseModel):
     status: PackStatus = "BLOCKED"
     figures: list[Figure] = Field(default_factory=list)
     variances: list[Variance] = Field(default_factory=list)
+    # The comparative layer: prior-period figures cited from the
+    # prior period's signed pack (empty for a first close), the
+    # restatement report when the prior period's sources moved
+    # after sign-off, and the controller's acknowledgement of it.
+    comparatives: list[FigureComparative] = Field(default_factory=list)
+    restatement: RestatementReport | None = None
+    restatement_acknowledgement: Acknowledgement | None = None
     definition_pack_id: str = ""
     definition_pack_version: str = ""
     mart_version: str = ""

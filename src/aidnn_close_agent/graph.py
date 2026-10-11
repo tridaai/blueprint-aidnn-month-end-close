@@ -28,6 +28,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from . import comparatives as comparatives_module
 from . import verifier as verifier_module
 from .definitions import DefinitionPack
 from .marts import MartSet
@@ -104,21 +105,57 @@ class PackPipeline:
         for figure in pack.figures:
             check = checks.get((figure.metric_id, figure.entity_id))
             figure.status = "verified" if check and check.ok else "mismatch"
-        pack.variances = report.variances
-        if report.passed:
+        pack.variances = list(report.variances)
+
+        # The comparative layer: prior-period figures cited from
+        # the prior period's signed pack, checked against that
+        # record (never recomputed from its sources). A restated
+        # prior period adds its named variance here — it does not
+        # block the pack's figures, which are this period's and
+        # verified; it holds the *signature* instead, in the
+        # service, until a controller acknowledges it.
+        comparative_failures: list = []
+        comparative_ctx = context.get("comparatives")
+        if comparative_ctx is not None:
+            comparative_failures = comparatives_module.attach_comparatives(
+                pack, comparative_ctx
+            )
+            pack.variances.extend(comparative_failures)
+            pack.audit.append({
+                "event": "comparatives_attached", "at": _now(),
+                "detail": f"{len(pack.comparatives)} comparatives cite "
+                          f"signed pack {comparative_ctx.prior_pack.pack_id} "
+                          f"({comparative_ctx.prior_pack.period}); definition "
+                          f"pack v{comparative_ctx.prior_pack.definition_pack_version}"
+                          f" → v{pack.definition_pack_version}",
+            })
+            if pack.restatement is not None:
+                variance = comparatives_module.restatement_variance(
+                    pack.restatement
+                )
+                pack.variances.append(variance)
+                pack.audit.append({
+                    "event": "restatement_detected", "at": _now(),
+                    "detail": variance.detail,
+                })
+
+        if report.passed and not comparative_failures:
             pack.status = "AWAITING_CONTROLLER"
             pack.narrative = build_narrative(pack.figures, pack.period)
             pack.audit.append({
                 "event": "verified", "at": _now(),
                 "detail": f"all {len(report.checks)} figures recomputed from "
-                          "source; no variances",
+                          "source; no figure variances"
+                          + ("; the signature is held on the restatement "
+                             "variance until it is acknowledged"
+                             if pack.restatement is not None else ""),
             })
         else:
             pack.status = "BLOCKED"
             pack.audit.append({
                 "event": "blocked", "at": _now(),
                 "detail": "; ".join(
-                    f"{v.code}: {v.detail}" for v in report.variances
+                    f"{v.code}: {v.detail}" for v in pack.variances
                 ) or "figure mismatch",
             })
         pack.updated_at = _now()

@@ -14,7 +14,14 @@ service owns the close discipline the graph does not:
   re-checks the pack's source stamps against the run's current
   ones, so the rule holds even if a marking step were missed;
 - **sign-off names its human** — anonymous decisions do not
-  exist, and only an AWAITING_CONTROLLER pack can receive one.
+  exist, and only an AWAITING_CONTROLLER pack can receive one;
+- **the comparative layer is prepared here** — the prior
+  period's signed pack, its definition version, and any
+  restatement of its sources are assembled at build time (see
+  :mod:`.comparatives`); a pack carrying an unacknowledged
+  restatement cannot be signed, and a restatement batch is
+  received outside any run, because a signed period's run is
+  closed and its record is history.
 
 Nothing here posts to a ledger, files a return, or moves money:
 the signed pack is the end of the line, by design.
@@ -24,9 +31,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from langgraph.types import Command
 
+from . import comparatives as comparatives_module
 from . import guardrails
 from .definitions import DefinitionPack
 from .errors import (
@@ -39,7 +48,7 @@ from .errors import (
 from .graph import PackPipeline
 from .marts import build_marts, slot_key
 from .ports import ConnectorPort, ObjectStorePort
-from .schemas import BoardPack, CloseRun
+from .schemas import Acknowledgement, BoardPack, CloseRun, SourceBatch
 
 log = logging.getLogger(__name__)
 
@@ -50,12 +59,17 @@ def _now() -> str:
 
 class CloseService:
     def __init__(self, pipeline: PackPipeline, store, connector: ConnectorPort,
-                 objects: ObjectStorePort, pack_def: DefinitionPack) -> None:
+                 objects: ObjectStorePort, pack_def: DefinitionPack,
+                 pack_dirs: list[Path] | None = None) -> None:
         self.pipeline = pipeline
         self.store = store
         self.connector = connector
         self.objects = objects
         self.pack_def = pack_def
+        # Where prior definition-pack versions live, for the
+        # comparative layer's registry lookups (restatement
+        # recomputation runs under the prior period's own pack).
+        self.pack_dirs = pack_dirs
 
     # -- runs ---------------------------------------------------------
 
@@ -135,6 +149,25 @@ class CloseService:
         self._mark_stale_packs(run)
         return run
 
+    def receive_restatement(self, batch_id: str) -> SourceBatch:
+        """Take delivery of a corrected extract for a period
+        whose pack is already signed.
+
+        A signed pack's run is CLOSED and refuses ingestion —
+        history is not edited — so a restatement arrives outside
+        any run: archived and stored as evidence, attached to
+        nothing. Its effect is computed later, when the next
+        period's pack is built: the comparative layer walks the
+        supersession chain off the signed pack's stamps, finds
+        this batch at the end of it, and names what it moved."""
+        batch = self.connector.fetch(batch_id)  # BatchNotFound propagates
+        key = f"extracts/restated/{batch.batch_id}.json"
+        self.objects.put(key, batch.model_dump_json().encode("utf-8"),
+                         "application/json")
+        self.store.save_batch(batch)
+        log.info("restatement received", extra={"batch_id": batch.batch_id})
+        return batch
+
     def _mark_stale_packs(self, run: CloseRun) -> None:
         """Any unsigned pack whose source stamps no longer match
         the run's current batches is stale — marked in the same
@@ -184,7 +217,17 @@ class CloseService:
         batches = self._current_batches(run)
         marts = build_marts(batches, self.pack_def)
         pack_id = f"PACK-{run.run_id}-{len(run.pack_ids) + 1}"
-        self.pipeline.contexts[pack_id] = {"marts": marts, "batches": batches}
+        # The comparative layer is prepared here, where the
+        # store lives: the prior period's signed pack, the
+        # definition versions on both sides, and whether the
+        # prior period's sources have been restated since.
+        comparative_ctx = comparatives_module.prepare_comparatives(
+            self.store, self.pack_def, run.period, self.pack_dirs
+        )
+        self.pipeline.contexts[pack_id] = {
+            "marts": marts, "batches": batches,
+            "comparatives": comparative_ctx,
+        }
         config = {"configurable": {"thread_id": pack_id}}
         state = {"run_id": run.run_id, "pack_id": pack_id, "period": run.period}
         self.pipeline.graph.invoke(state, config=config)
@@ -223,6 +266,16 @@ class CloseService:
                 f"pack {pack_id} was built from superseded sources; "
                 "rebuild it before signing"
             )
+        if pack.restatement is not None \
+                and pack.restatement_acknowledgement is None:
+            raise GateError(
+                f"pack {pack_id} carries an unacknowledged restatement "
+                f"of {pack.restatement.prior_period} (signed pack "
+                f"{pack.restatement.prior_pack_id}): a named controller "
+                "must acknowledge the restatement on the record before "
+                "this pack can be signed — the signed prior pack is "
+                "not changed by acknowledging, and neither is this one"
+            )
         config = {"configurable": {"thread_id": pack_id}}
         self.pipeline.graph.invoke(
             Command(resume={"decision": decision, "actor": actor,
@@ -230,3 +283,47 @@ class CloseService:
             config=config,
         )
         return self.get_pack(pack_id)
+
+    def acknowledge_restatement(self, pack_id: str, actor: str,
+                                note: str) -> BoardPack:
+        """Record a named controller's acknowledgement of the
+        restatement a pack carries.
+
+        The acknowledgement changes nothing else: not the signed
+        prior pack (history), not this pack's figures or its
+        variance (the restatement stays named on the record
+        permanently). It is the gate's evidence that a human saw
+        the thing the gate was holding the signature for."""
+        if not actor or not actor.strip():
+            raise GateError("an acknowledgement must name its controller")
+        if not note or not note.strip():
+            raise GateError(
+                "an acknowledgement must carry a note — what was "
+                "reviewed, in the controller's own words"
+            )
+        pack = self.get_pack(pack_id)
+        if pack.restatement is None:
+            raise GateError(
+                f"pack {pack_id} carries no restatement to acknowledge"
+            )
+        if pack.restatement_acknowledgement is not None:
+            raise GateError(
+                f"the restatement on pack {pack_id} was already "
+                f"acknowledged by "
+                f"{pack.restatement_acknowledgement.actor}"
+            )
+        if pack.status not in ("AWAITING_CONTROLLER", "BLOCKED"):
+            raise GateError(
+                f"pack {pack_id} is {pack.status}; a restatement can "
+                "only be acknowledged on a live pack"
+            )
+        pack.restatement_acknowledgement = Acknowledgement(
+            actor=actor, note=note, at=_now()
+        )
+        pack.audit.append({
+            "event": "restatement_acknowledged", "at": _now(),
+            "detail": f"{actor}: {note}",
+        })
+        pack.updated_at = _now()
+        self.store.save_pack(pack)
+        return pack

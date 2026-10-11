@@ -143,3 +143,36 @@ def load_definition_pack(path: Path) -> DefinitionPack:
     return DefinitionPack.model_validate(
         json.loads(Path(path).read_text(encoding="utf-8"))
     )
+
+
+def bundled_pack_dir() -> Path:
+    """Where the bundled, versioned pack files live."""
+    return Path(__file__).resolve().parent / "definition_packs"
+
+
+def load_definition_pack_version(pack_id: str, version: str,
+                                 search_dirs: list[Path] | None = None,
+                                 ) -> DefinitionPack | None:
+    """Find a pack by (id, version) among versioned pack files.
+
+    A close that spans a pack upgrade needs the *old* version
+    again — to recompute a prior period under the definitions
+    that produced its signed pack, for instance. Pack files are
+    never edited in place, so old versions stay on disk next to
+    the new one; this is the lookup that finds them. Returns
+    ``None`` when the version is not on disk (a deployment that
+    archived it elsewhere): callers decide what that means —
+    the comparative layer degrades to citation-only rather than
+    inventing a recomputation under the wrong definitions."""
+    dirs = search_dirs if search_dirs is not None else [bundled_pack_dir()]
+    for directory in dirs:
+        if not directory or not Path(directory).is_dir():
+            continue
+        for path in sorted(Path(directory).glob("*.json")):
+            try:
+                candidate = load_definition_pack(path)
+            except Exception:
+                continue  # an unparseable file is not a pack version
+            if candidate.pack_id == pack_id and candidate.version == version:
+                return candidate
+    return None

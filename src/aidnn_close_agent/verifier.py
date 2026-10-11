@@ -19,6 +19,13 @@ wrong account) recompute cleanly here; what catches those is the
 tie-out family — independent subledger totals the GL must agree
 with. The eval pack plants one of each, and the README says
 which net catches which fish.
+
+The module also carries the comparative check
+(:func:`verify_comparatives`), whose source is not the batches
+at all but the prior period's **signed pack record**: a
+comparative must cite the signed figure exactly, because the
+signed record — not a recompute over possibly-restated sources —
+is what the board approved.
 """
 
 from __future__ import annotations
@@ -28,7 +35,13 @@ from decimal import Decimal
 
 from .definitions import DefinitionPack, MetricDefinition
 from .fx import D, ZERO, RateTable, money, q
-from .schemas import Figure, SourceBatch, Variance
+from .schemas import (
+    BoardPack,
+    Figure,
+    FigureComparative,
+    SourceBatch,
+    Variance,
+)
 
 
 @dataclass
@@ -300,3 +313,50 @@ def verify(pack: DefinitionPack, batches: list[SourceBatch],
                    "definition pack does not define",
         ))
     return report
+
+
+def verify_comparatives(comparatives: list[FigureComparative],
+                        signed_pack: BoardPack) -> list[Variance]:
+    """Check the comparative layer against the record it cites.
+
+    A different discipline from :func:`verify`, deliberately: the
+    figures under check here are not recomputed from source —
+    last month's sources may have been restated since, and
+    recomputing them would silently rewrite what the board
+    approved. The check is citation-exactness: every comparative
+    must equal, to the cent, the figure in the **signed pack
+    record** it names. A comparative that cites a figure the
+    signed pack does not hold, or holds at another value, is a
+    ``COMPARATIVE_MISMATCH`` and blocks the pack: a board pack
+    whose comparatives do not tie to the signed record is worse
+    than one with no comparatives at all."""
+    signed = {
+        (f.metric_id, f.entity_id): f for f in signed_pack.figures
+    }
+    variances: list[Variance] = []
+    for comp in comparatives:
+        figure = signed.get((comp.metric_id, comp.entity_id))
+        where = f" for {comp.entity_id}" if comp.entity_id else ""
+        if figure is None:
+            variances.append(Variance(
+                code="COMPARATIVE_MISMATCH", metric_id=comp.metric_id,
+                entity_id=comp.entity_id,
+                detail=(
+                    f"comparative for {comp.metric_id}{where} cites "
+                    f"{signed_pack.pack_id}, but that signed pack holds "
+                    "no such figure"
+                ),
+            ))
+        elif D(figure.value) != D(comp.prior_value):
+            variances.append(Variance(
+                code="COMPARATIVE_MISMATCH", metric_id=comp.metric_id,
+                entity_id=comp.entity_id,
+                detail=(
+                    f"comparative for {comp.metric_id}{where} shows "
+                    f"{comp.prior_value} as the prior-period figure, but "
+                    f"the signed pack {signed_pack.pack_id} records "
+                    f"{figure.value} — comparatives cite the signed "
+                    "record exactly, or they do not ship"
+                ),
+            ))
+    return variances
