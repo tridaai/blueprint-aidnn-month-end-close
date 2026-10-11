@@ -197,6 +197,21 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   flag with both versions named. October runs under pack
   v1.1.0, which widened operating expenses to include
   insurance; September's comparatives say so.
+- **The audit evidence pack** — a signed pack can generate
+  one bundle an external auditor can re-perform from: every
+  figure with its definition entry reproduced and the
+  verifier's verdict as recorded, the manifest of the exact
+  source extracts consumed (versions and the content hashes
+  from ingestion), the comparatives and the signed pack they
+  cite, any restatement and its acknowledgement, and the
+  sign-off record with the checklist state the signature
+  froze. The bundle is a **projection of stored records** —
+  it recomputes nothing — it is refused for anything but a
+  `SIGNED_OFF` pack (state named), it is checked for
+  completeness before anything is written (any gap refuses,
+  naming the gap), and its canonical bytes regenerate
+  byte-identically, with the SHA-256 digest carried on the
+  bundle record.
 
 ## The aidnn seam
 
@@ -260,6 +275,12 @@ Copy `.env.example` to `.env` and set what you use:
 - The signed pack is a record of approval, not a posting.
   Filing, posting, and payment stay in the customer's systems
   of record, by design.
+- The evidence bundle names the source extracts by batch id,
+  version, and recorded content hash — it deliberately does
+  not embed the raw extracts. The bytes themselves sit in the
+  object-store archive written at ingestion, so an auditor
+  pulls the exact extract a manifest line names and checks
+  its hash against the bundle.
 
 ## Evaluations
 
@@ -291,6 +312,13 @@ gates on it:
   (signed vs recomputed); sign-off refuses while it is
   unacknowledged and succeeds after acknowledgement; the
   signed September pack is byte-identical at the end.
+- **Evidence bundles** — both signed packs generate theirs:
+  complete (25 figures with definitions and verdicts, the
+  full source manifest, the sign-off record), byte-identical
+  on regeneration, the record's digest matching the stored
+  bytes — and generation for the blocked first-attempt pack
+  is refused with its state named. October's bundle carries
+  the comparatives, the restatement, and the acknowledgement.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -306,6 +334,7 @@ src/aidnn_close_agent/
   marts.py          governed marts: normalization, DQ rules, stamps
   verifier.py       the independent recomputation — separate code path
   comparatives.py   prior-period comparatives, restatement detection
+  evidence.py       the audit evidence pack: gated, checked projection
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate

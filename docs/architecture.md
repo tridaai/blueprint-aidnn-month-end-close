@@ -286,21 +286,108 @@ period holds the signature) before resuming the graph. Three
 roles, three code paths, no shared "just proceed" switch
 anywhere.
 
+## The audit evidence pack: projection, not computation
+
+A signed pack is the close's internal record. The auditors,
+though, do not take "the system verified it" as evidence —
+they re-perform. `evidence.py` assembles the artifact they
+re-perform from, and its defining discipline is that it
+**computes nothing**: assembly reads the stored pack, its run,
+its source batches, the definition pack at the version the
+pack stamps, and the signed prior pack a comparative cites,
+and arranges them into one document (JSON, plus a text
+rendering generated from the same document so the two cannot
+drift). A bundle figure equals the pack figure because it *is*
+the pack figure, copied — the eval gate pins the equality
+rather than trusting it.
+
+Contents: the pack's identity (period, pack and run ids,
+definition-pack id and version, mart version); every figure
+with its value, its definition entry reproduced from the
+stamped definition-pack version, its own source stamps, and
+the verifier verdict as recorded (`Figure.status` — the
+verify node's disposition, stored on the pack at verification
+time); the source manifest — every batch the pack stamps, with
+kind, entity, version, and the content hash recorded on the
+batch at ingestion; the comparatives with their citations;
+the restatement report and its acknowledgement; the standing
+variances; and the sign-off record — decision, controller,
+reason, time — with the run's checklist state. That last item
+deserves its argument: the checklist is not stamped on the
+pack at signing; it is read back from the run. That is sound
+because a signed pack's run is CLOSED, and a closed run
+refuses ingestion — the checklist cannot have moved since the
+signature froze it. The completeness check below asserts the
+run is CLOSED and nothing is missing, so the claim is verified
+at generation time, not merely believed.
+
+Two gates guard generation:
+
+- **State.** Only a `SIGNED_OFF` pack gets a bundle. Any other
+  state is refused with the state named — an auditor bundle
+  for a blocked or unsigned close would be a false artifact,
+  however complete its contents.
+- **Completeness.** Before anything is written: every figure
+  must resolve to a definition entry in the stamped pack
+  version and carry a `verified` verdict; every stamped batch
+  must be in the store at the stamped version with a recorded
+  hash; the run must be CLOSED with no missing sources; every
+  comparative's cited pack must stand in the store as signed;
+  a restatement must carry its acknowledgement. Any gap
+  refuses generation, naming the gap. A partial bundle is
+  never written — the failure mode this defends against is
+  the partially-stored pack (an interrupted write, an archived
+  store restored without its batches) producing a
+  confident-looking artifact with holes in it.
+
+Definition resolution follows the comparative layer's rule:
+the service's live pack when it *is* the stamped version,
+otherwise the versioned registry. An unresolvable version is
+a refusal, never a substitution — definitions reproduced from
+the wrong version would fabricate the evidence. (Generating
+September's bundle through October's v1.1.0 service exercises
+exactly this path: v1.0.0 comes from the registry, and the
+bytes are identical to September's own service's.)
+
+The bytes are canonical — fixed key order, lists sorted by
+the keys an auditor sorts by, and no wall-clock field anywhere
+in the document. Generation metadata (when it happened) lives
+on the bundle *record*; the digest lives there too. The same
+pack therefore regenerates byte-identical bytes forever, and
+the service returns the existing record untouched when the
+stored bytes still hash to the recorded digest. What the
+bundle deliberately omits is the raw extracts themselves: the
+manifest names them by id, version, and hash, and the bytes
+sit in the ingestion archive — an auditor pulls the exact
+extract a manifest line names and checks its hash against
+the bundle, rather than trusting a copy of the extract
+embedded in the artifact that cites it.
+
 ## Data model
 
-One migration (`0001_close.sql`), three JSONB tables mirroring
-the sibling blueprints' record discipline:
+Two migrations, four JSONB tables mirroring the sibling
+blueprints' record discipline:
 
-- `source_batches` — every extract ever ingested, append-only;
+- `source_batches` — every extract ever ingested, append-only
+  (`0001_close.sql`);
 - `close_runs` — run state incl. the checklist and slot map;
 - `board_packs` — figures, variances, stamps, narrative,
   sign-off, and (from the second period) the comparative
   layer: cited prior figures, the restatement report, and its
-  acknowledgement.
+  acknowledgement;
+- `evidence_bundles` — one row per generated audit bundle
+  (`0002_evidence_bundles.sql`): pack and period for lookup,
+  the object-store keys, the digest, the counts, and the
+  generation time. The bundle bytes themselves are not in the
+  database.
 
 Raw extract bytes are additionally archived to object storage
 at ingestion (`extracts/<period>/<batch_id>.json`), so the
 evidence chain survives independently of the record store.
+Generated bundles live there too, under
+`evidence/<period>/<pack_id>/evidence-v1.json` and
+`evidence-v1.txt` — the record in `evidence_bundles` is the
+index entry that names them and carries their digest.
 
 ## What a production deploy still needs
 
