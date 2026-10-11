@@ -1,0 +1,19 @@
+{
+  "batch_id": "B-HLE-AR-v1",
+  "kind": "ar",
+  "entity_id": "HLE",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [],
+  "ar_billings": [
+    {
+      "entity_id": "HLE",
+      "billings": "615000.00",
+      "currency": "EUR"
+    }
+  ],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "8cbaf37e82b3b2bab0c7996a41ff24f3bda91f2de83cd3afeef28ca976c89273"
+}

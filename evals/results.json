@@ -1,0 +1,32 @@
+{
+  "backend": "offline",
+  "period": "2026-09",
+  "phase_a_status": "BLOCKED",
+  "phase_a_variance_codes": [
+    "DUPLICATE_JOURNAL",
+    "SUBLEDGER_TIE_OUT",
+    "UNMATCHED_IC_LEG"
+  ],
+  "gold_questions": 25,
+  "gold_passed": 25,
+  "gold_failures": [],
+  "traceability": 1.0,
+  "consolidation_ties": {
+    "consolidated_revenue == sum of entity revenues converted at 1.10": true,
+    "gross == external + intercompany": true,
+    "eliminations == paired intercompany revenue": true,
+    "operating income identity": true,
+    "consolidated cash ties": true
+  },
+  "phase_b_status": "SIGNED_OFF",
+  "gates": {
+    "planted traps named + blocked": true,
+    "blocked pack refuses sign-off": true,
+    "superseded pack goes stale": true,
+    "gold figures exact": true,
+    "traceability == 1.0": true,
+    "consolidation ties hold": true,
+    "verified pack signs + run closes": true
+  },
+  "gate_passed": true
+}

@@ -1,0 +1,29 @@
+{
+  "batch_id": "B-CRM-v1",
+  "kind": "crm",
+  "entity_id": null,
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [
+    {
+      "name": "Northgate Retail — frame agreement",
+      "amount": "900000.00",
+      "stage": "open"
+    },
+    {
+      "name": "Alder Health — distribution RFP",
+      "amount": "850000.00",
+      "stage": "open"
+    },
+    {
+      "name": "Pinecrest Foods — regional rollout",
+      "amount": "550000.00",
+      "stage": "open"
+    }
+  ],
+  "sha256": "10a7b6ab4d0ba4a85c8c46fca4ad551a4140fb3ff14d384278d78e7b13118812"
+}

@@ -1,0 +1,139 @@
+{
+  "batch_id": "B-HLE-GL-v1",
+  "kind": "gl",
+  "entity_id": "HLE",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [
+    {
+      "journal_id": "J-E1",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "400000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-E2",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Product sales",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "520000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4000",
+          "debit": "0.00",
+          "credit": "520000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-E3",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Services billing INV-E-77",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "95000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1100",
+          "debit": "0.00",
+          "credit": "95000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-E4",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Cost of goods sold",
+      "lines": [
+        {
+          "account": "5000",
+          "debit": "260000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "260000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-E5",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Payroll",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "88000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "88000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-E6",
+      "entity_id": "HLE",
+      "date": "2026-09-30",
+      "memo": "Rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "12000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "12000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "ba753433e15c3a0c717648bb61cece06965986dcf612bb222a20f943c3233b23"
+}

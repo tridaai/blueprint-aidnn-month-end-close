@@ -1,0 +1,19 @@
+{
+  "batch_id": "B-FX-v2",
+  "kind": "fx",
+  "entity_id": null,
+  "version": 2,
+  "supersedes": "B-FX-v1",
+  "phase": "late",
+  "journals": [],
+  "ar_billings": [],
+  "rate_table": {
+    "version": 2,
+    "reporting_currency": "USD",
+    "rates": {
+      "EUR": "1.10"
+    }
+  },
+  "opportunities": [],
+  "sha256": "86c63540fd4058c31ee91338df17be1cd96c720e9695565f37687010947fa8ad"
+}

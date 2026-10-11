@@ -1,0 +1,95 @@
+{
+  "batch_id": "B-HLG-GL-v1",
+  "kind": "gl",
+  "entity_id": "HLG",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [
+    {
+      "journal_id": "J-H1",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Opening cash balance",
+      "lines": [
+        {
+          "account": "1000",
+          "debit": "250000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H2",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Group services billed",
+      "lines": [
+        {
+          "account": "1100",
+          "debit": "120000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "4100",
+          "debit": "0.00",
+          "credit": "120000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H3",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Head-office payroll",
+      "lines": [
+        {
+          "account": "6100",
+          "debit": "45000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "45000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    },
+    {
+      "journal_id": "J-H4",
+      "entity_id": "HLG",
+      "date": "2026-09-30",
+      "memo": "Head-office rent",
+      "lines": [
+        {
+          "account": "6200",
+          "debit": "9000.00",
+          "credit": "0.00",
+          "ic_counterparty": null,
+          "memo": ""
+        },
+        {
+          "account": "1000",
+          "debit": "0.00",
+          "credit": "9000.00",
+          "ic_counterparty": null,
+          "memo": ""
+        }
+      ]
+    }
+  ],
+  "ar_billings": [],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "0889ceff7d09d97738cf160617b78d828e6ca6eb5c391e63f490de5c42a2ae90"
+}

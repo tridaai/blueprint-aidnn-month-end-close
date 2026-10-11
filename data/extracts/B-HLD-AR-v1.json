@@ -1,0 +1,19 @@
+{
+  "batch_id": "B-HLD-AR-v1",
+  "kind": "ar",
+  "entity_id": "HLD",
+  "version": 1,
+  "supersedes": null,
+  "phase": "initial",
+  "journals": [],
+  "ar_billings": [
+    {
+      "entity_id": "HLD",
+      "billings": "1000000.00",
+      "currency": "USD"
+    }
+  ],
+  "rate_table": null,
+  "opportunities": [],
+  "sha256": "911b327ad712e51ef00bd5c1bb3def41a12a1112add05fe2a1ee4bf1b54581e2"
+}

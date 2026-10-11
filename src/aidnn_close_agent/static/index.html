@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aidnn Month-End Close — Trida Blueprint Console</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root {
+    --indigo: #4F46E5;
+    --ink: #0A0A0A;
+    --muted: #5b5b66;
+    --line: #e6e6ee;
+    --bg: #ffffff;
+    --panel: #f7f7fb;
+    --ok: #177245;
+    --warn: #9a6a00;
+    --bad: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 28px; border-bottom: 1px solid var(--line);
+  }
+  header img { height: 34px; }
+  header h1 { font-size: 19px; margin: 0; font-weight: 800; letter-spacing: -0.01em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .pill {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    border: 1px solid var(--line); font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; background: #fff;
+  }
+  .pill.indigo { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+  main { padding: 22px 28px 8px; display: grid; grid-template-columns: 1fr 1.4fr; gap: 22px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: #fff; border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: #eef0fe; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .st-SIGNED_OFF, .st-verified { color: var(--ok); }
+  .st-AWAITING_CONTROLLER { color: var(--indigo); }
+  .st-BLOCKED, .st-mismatch { color: var(--bad); }
+  .st-STALE, .st-RETURNED { color: var(--warn); }
+  button {
+    background: var(--indigo); color: #fff; border: 0; border-radius: 999px;
+    padding: 8px 16px; font-weight: 700; cursor: pointer; font-size: 13.5px;
+  }
+  button.secondary { background: #fff; color: var(--indigo); border: 1px solid var(--indigo); }
+  input { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; }
+  .kv { display: grid; grid-template-columns: 170px 1fr; gap: 4px 10px; font-size: 13.5px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .flag { color: var(--bad); font-weight: 600; font-size: 13px; }
+  .note { color: var(--muted); font-size: 13px; }
+  .narrative { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; white-space: pre-line; }
+  footer {
+    display: flex; align-items: center; gap: 18px;
+    padding: 18px 28px 26px; color: var(--muted); font-size: 13.5px;
+  }
+  footer img { height: 24px; }
+  footer a { color: var(--indigo); text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <img src="/favicon.svg" alt="Trida AI">
+  <div>
+    <h1>aidnn Month-End Close, deployed</h1>
+    <div class="sub">Trida AI blueprint console — sources in, every figure recomputed from source, a controller at the gate. Nothing here posts to a ledger.</div>
+  </div>
+  <span style="flex:1"></span>
+  <span class="pill indigo" id="engine-pill">engine …</span>
+  <span class="pill" id="pack-pill">pack …</span>
+</header>
+<main>
+  <section>
+    <h2>Close runs</h2>
+    <div style="margin-bottom:12px; display:flex; gap:8px;">
+      <button id="story">Run the demo close</button>
+      <button class="secondary" id="refresh">Refresh</button>
+    </div>
+    <table>
+      <thead><tr><th>Run</th><th>Period</th><th>Status</th><th>Packs</th></tr></thead>
+      <tbody id="runs-body"><tr><td colspan="4" class="note">No runs yet — run the demo close.</td></tr></tbody>
+    </table>
+    <h2 style="margin-top:20px;">What the verifier enforces</h2>
+    <p class="note">Every figure in a pack is recomputed from the source extracts by an
+    independent code path. A figure that cannot be reproduced blocks the pack, with the
+    variance named — a duplicated journal, an unmatched intercompany leg, a subledger
+    tie-out gap. A pack built from superseded extracts goes stale by its version stamps
+    and cannot be signed. Only a fully verified pack reaches the controller.</p>
+  </section>
+  <section>
+    <h2>Board pack</h2>
+    <div id="detail" class="note">Select a run to see its packs, figures, and variances.</div>
+  </section>
+</main>
+<footer>
+  <img src="/favicon.svg" alt="Trida AI">
+  <span>Trida AI — Blueprint: aidnn Month-End Close, Deployed</span>
+  <a href="https://trida.ai" target="_blank" rel="noopener">Visit Trida AI →</a>
+  <a href="https://trida.ai/blog?category=blueprints" target="_blank" rel="noopener">View all blueprints →</a>
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+let packsByRun = {};
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+  return res.json();
+}
+
+async function readiness() {
+  try {
+    const r = await api("/readiness");
+    $("engine-pill").textContent = "engine: " + r.finance_engine;
+    $("pack-pill").textContent = "definitions: " + r.definition_pack;
+  } catch (e) { /* header pills stay as-is */ }
+}
+
+function money(v) { return v === null || v === undefined ? "—" : Number(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+async function loadRuns() {
+  const runs = await api("/runs");
+  const body = $("runs-body");
+  if (!runs.length) {
+    body.innerHTML = '<tr><td colspan="4" class="note">No runs yet — run the demo close.</td></tr>';
+    return;
+  }
+  body.innerHTML = runs.map(r => `<tr class="row" data-id="${r.run_id}">
+    <td>${r.run_id}</td><td>${r.period}</td>
+    <td class="status st-${r.status}">${r.status}</td>
+    <td>${r.pack_ids.length}</td></tr>`).join("");
+  body.querySelectorAll("tr.row").forEach(tr =>
+    tr.addEventListener("click", () => showRun(tr.dataset.id, runs)));
+}
+
+async function showRun(runId, runs) {
+  const run = runs.find(r => r.run_id === runId) || await api("/runs/" + runId);
+  let html = `<dl class="kv">
+    <dt>Run</dt><dd>${run.run_id} · period ${run.period}</dd>
+    <dt>Status</dt><dd class="status st-${run.status}">${run.status}</dd>
+    <dt>Sources in force</dt><dd>${Object.entries(run.current_batches).map(([slot, b]) => slot + " → " + b).join("<br>") || "—"}</dd></dl>`;
+  if ((run.injection_flags || []).length)
+    run.injection_flags.forEach(f => html += `<p class="flag">⚠ injection screen: ${f}</p>`);
+  if (!run.pack_ids.length) html += `<p class="note">No packs built yet.</p>`;
+  for (const packId of run.pack_ids) {
+    const pack = await api("/packs/" + packId);
+    html += packHtml(pack);
+  }
+  $("detail").innerHTML = html;
+  document.querySelectorAll("[data-sign]").forEach(btn =>
+    btn.addEventListener("click", () => decide(btn.dataset.sign, btn.dataset.pack)));
+}
+
+function packHtml(pack) {
+  let html = `<h2 style="margin-top:18px;">${pack.pack_id} — <span class="status st-${pack.status}">${pack.status}</span></h2>`;
+  html += `<dl class="kv">
+    <dt>Definition pack</dt><dd>${pack.definition_pack_id} v${pack.definition_pack_version}</dd>
+    <dt>Mart version</dt><dd>${pack.mart_version}</dd>
+    <dt>FX table version</dt><dd>v${pack.source_versions.fx_version}</dd>
+    <dt>Source batches</dt><dd>${Object.entries(pack.source_versions.batches).map(([b, v]) => b + " (v" + v + ")").join(", ")}</dd></dl>`;
+  (pack.variances || []).forEach(v => html += `<p class="flag">✗ ${v.code} — ${v.detail}</p>`);
+  html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th></tr></thead><tbody>`
+    + pack.figures.map(f => `<tr><td>${f.label}</td><td>${f.entity_id || f.scope}</td>
+      <td class="num">${f.currency} ${money(f.value)}</td>
+      <td class="status st-${f.status}">${f.status}</td></tr>`).join("")
+    + `</tbody></table>`;
+  if (pack.narrative)
+    html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
+  if (pack.decision)
+    html += `<p class="note" style="margin-top:10px;">Controller: ${pack.decision.decision} by ${pack.decision.actor}${pack.decision.reason ? " — " + pack.decision.reason : ""}</p>`;
+  if (pack.status === "AWAITING_CONTROLLER") {
+    html += `<div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
+      <input id="actor-${pack.pack_id}" placeholder="Controller name (required)">
+      <input id="reason-${pack.pack_id}" placeholder="Reason (optional)">
+      <button data-sign="sign" data-pack="${pack.pack_id}">Sign off</button>
+      <button class="secondary" data-sign="return" data-pack="${pack.pack_id}">Return</button></div>
+      <p class="note" id="gate-error-${pack.pack_id}"></p>`;
+  }
+  return html;
+}
+
+async function decide(decision, packId) {
+  try {
+    await api(`/packs/${packId}/sign-off`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({decision, actor: $("actor-" + packId).value, reason: $("reason-" + packId).value}),
+    });
+    await loadRuns();
+    const runs = await api("/runs");
+    const run = runs.find(r => r.pack_ids.includes(packId));
+    if (run) await showRun(run.run_id, runs);
+  } catch (e) {
+    const slot = $("gate-error-" + packId);
+    if (slot) slot.textContent = e.message;
+  }
+}
+
+$("story").addEventListener("click", async () => {
+  const out = await api("/demo/run", {method: "POST"});
+  await loadRuns();
+  const runs = await api("/runs");
+  await showRun(out.run.run_id, runs);
+});
+$("refresh").addEventListener("click", loadRuns);
+readiness(); loadRuns();
+</script>
+</body>
+</html>
