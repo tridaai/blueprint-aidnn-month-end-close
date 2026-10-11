@@ -99,6 +99,32 @@ against buyer's. Its gates:
   figures standing on the pair are flagged, every entity
   figure still equals its gold, and sign-off is refused.
 
+Both closes also carry **rate provenance** — the rate table
+itself on every figure's stamp, not just its version. Its
+gates:
+
+- **the stamp is the table** — September's signed pack and
+  every figure on it stamp rate table v2 (EUR 1.10); October's
+  pack stamps v3 (EUR 1.12);
+- **rate changes flagged exactly** — October's comparatives
+  flag RATE_CHANGED on exactly the consolidated figures whose
+  derivation converts EUR money (``RATE_CHANGED_METRICS``,
+  enumerated by hand — including ``consolidated_ic_revenue``
+  and ``pipeline_open`` staying unflagged, because no EUR flows
+  through their conversions), and never on an entity figure;
+  the flux schedule states both table versions on its face
+  and its entries' flags agree;
+- **provenance in the bundle** — October's bundle carries both
+  stamped tables and the EUR change (1.10 → 1.12) by name;
+- **the verifier's basis** — a staged fourth act replays
+  October's figures against an FX batch edited in place
+  (EUR 1.15 under the same batch id and version): the
+  verifier names RATE_TABLE_MISMATCH and still reproduces
+  every figure at the stamped table. Figures re-stamped with
+  a table they were not computed at are named per figure —
+  converted off-stamp — with no FIGURE_MISMATCH blurring the
+  break.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -118,6 +144,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 from aidnn_close_agent.connectors import DatasetConnector  # noqa: E402
+from aidnn_close_agent import verifier as verifier_module  # noqa: E402
 from aidnn_close_agent.datasets import (  # noqa: E402
     DEFINITION_CHANGED_METRICS,
     IC_VARIANT_BATCH_ID,
@@ -125,6 +152,7 @@ from aidnn_close_agent.datasets import (  # noqa: E402
     IC_VARIANT_PAIR,
     PERIOD,
     PERIOD_OCTOBER,
+    RATE_CHANGED_METRICS,
     RESTATEMENT_AFFECTED,
     RESTATEMENT_BATCH_ID,
     build_october_world,
@@ -137,7 +165,7 @@ from aidnn_close_agent.definitions import (  # noqa: E402
 from aidnn_close_agent.demo import build_demo_service  # noqa: E402
 from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
 from aidnn_close_agent.errors import EvidenceError, GateError  # noqa: E402
-from aidnn_close_agent.fx import D  # noqa: E402
+from aidnn_close_agent.fx import D, RateTable  # noqa: E402
 from aidnn_close_agent.graph import PackPipeline  # noqa: E402
 from aidnn_close_agent.object_store import InMemoryObjectStore  # noqa: E402
 from aidnn_close_agent.service import CloseService  # noqa: E402
@@ -244,6 +272,20 @@ def evaluate() -> dict:
             and service.get_run(run.run_id).status == "CLOSED"
     results["phase_b_status"] = second.status
 
+    # -- gate: the stamp is the table itself -------------------------
+    stamp_gate = signed is not None \
+        and signed.source_versions.fx_table is not None \
+        and signed.source_versions.fx_table.version == 2 \
+        and signed.source_versions.fx_table.rates == {"EUR": "1.10"} \
+        and all(
+            f.source_versions.fx_table == signed.source_versions.fx_table
+            for f in signed.figures
+        )
+    results["signed_stamp"] = (
+        signed.source_versions.fx_table.model_dump()
+        if signed is not None
+        and signed.source_versions.fx_table is not None else None)
+
     evidence = _evaluate_evidence(service, signed)
     results.update(evidence["results"])
 
@@ -252,6 +294,9 @@ def evaluate() -> dict:
 
     ic_variant = _evaluate_ic_variant()
     results.update(ic_variant["results"])
+
+    rate_checks = _evaluate_rate_checks()
+    results.update(rate_checks["results"])
 
     first_pair_ok = (
         len(first.ic_pairs) == 1
@@ -291,8 +336,10 @@ def evaluate() -> dict:
         "ic agreed pair silent on the signed pack": signed_pair_ok,
         "evidence bundle carries the ic pairs":
             evidence["gates"]["ic_pairs"],
+        "rate table stamped on the signed pack": stamp_gate,
         **october["gates"],
         **ic_variant["gates"],
+        **rate_checks["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -381,6 +428,9 @@ def _evaluate_october(september_service, signed_september) -> dict:
             "restated bundle carries the flux schedule": False,
             "ic pair agrees in october": False,
             "october bundle carries the ic pairs": False,
+            "rate changes flagged exactly": False,
+            "flux states both rate tables": False,
+            "october bundle carries rate provenance": False,
         }
         return out
 
@@ -441,6 +491,16 @@ def _evaluate_october(september_service, signed_september) -> dict:
     out["gates"]["definition changes flagged"] = \
         flagged == DEFINITION_CHANGED_METRICS
 
+    rate_flagged = {
+        c.metric_id for c in pack.comparatives if c.rate_changed
+    }
+    out["results"]["rate_changed_metrics"] = sorted(rate_flagged)
+    out["gates"]["rate changes flagged exactly"] = (
+        rate_flagged == RATE_CHANGED_METRICS
+        and not any(
+            c.rate_changed for c in pack.comparatives if c.entity_id)
+    )
+
     flux = pack.flux
     out["gates"]["flux identities hold for every comparative figure"] = (
         flux is not None and len(flux.entries) == 25 and all(
@@ -467,6 +527,13 @@ def _evaluate_october(september_service, signed_september) -> dict:
             == DEFINITION_CHANGED_METRICS
             and all("definition change" in e.note
                     for e in flux.entries if e.definition_changed)
+        )
+        out["gates"]["flux states both rate tables"] = (
+            flux.prior_fx_version == 2 and flux.current_fx_version == 3
+            and {e.metric_id for e in flux.entries if e.rate_changed}
+            == RATE_CHANGED_METRICS
+            and all("rate changed" in e.note
+                    for e in flux.entries if e.rate_changed)
         )
 
     affected = {}
@@ -580,6 +647,22 @@ def _evaluate_october(september_service, signed_september) -> dict:
             and sep_section["verdict"] == "AGREED"
         )
     out["gates"]["october bundle carries the ic pairs"] = ic_bundle_ok
+
+    fx_bundle_ok = False
+    if signed_october is not None:
+        fx = october_doc.get("fx") or {}
+        current = fx.get("current") or {}
+        prior = fx.get("prior") or {}
+        fx_bundle_ok = (
+            current.get("version") == 3
+            and current.get("rates") == {"EUR": "1.12"}
+            and prior.get("version") == 2
+            and prior.get("rates") == {"EUR": "1.10"}
+            and fx.get("rate_changes") == [
+                {"currency": "EUR", "prior_rate": "1.10",
+                 "current_rate": "1.12"}]
+        )
+    out["gates"]["october bundle carries rate provenance"] = fx_bundle_ok
     out["results"]["october_status"] = pack.status
     return out
 
@@ -672,6 +755,78 @@ def _evaluate_ic_variant() -> dict:
     out["gates"][
         "ic flags mark exactly the consolidated figures on the pair"
     ] = flagged == IC_VARIANT_FLAGGED and entity_gold_ok
+    return out
+
+
+def _evaluate_rate_checks() -> dict:
+    """Act four: the verifier's basis. October closes clean on
+    a fresh store; its figures are then replayed against a
+    batch set whose FX table was edited in place — same batch
+    id, same table version, EUR at 1.15 instead of the stamped
+    1.12 — and against a dishonest re-stamp. Both breaks must
+    be named as rate breaks, and the honest figures must still
+    reproduce at the table they stamp."""
+    out: dict = {"results": {}, "gates": {
+        "edited rate table named, figures reproduce at the stamp":
+            False,
+        "figure converted off-stamp named per figure": False,
+    }}
+    store = InMemoryCloseStore()
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    service = CloseService(
+        pipeline=pipeline, store=store,
+        connector=DatasetConnector(),
+        objects=InMemoryObjectStore(), pack_def=pack_v110,
+    )
+    world = build_october_world()
+    run = service.create_run(PERIOD_OCTOBER)
+    service.ingest(run.run_id, [b.batch_id for b in world.batches])
+    pack = service.build_pack(run.run_id)
+    if pack.status != "AWAITING_CONTROLLER":
+        return out
+    batches = [store.get_batch(bid) for bid in pack.source_versions.batches]
+
+    edited = [
+        batch.model_copy(update={"rate_table": RateTable(
+            version=3, reporting_currency="USD", rates={"EUR": "1.15"})})
+        if batch.kind == "fx" else batch
+        for batch in batches
+    ]
+    report = verifier_module.verify(pack_v110, edited, pack.figures)
+    out["gates"]["edited rate table named, figures reproduce at the stamp"] = (
+        [v.code for v in report.variances] == ["RATE_TABLE_MISMATCH"]
+        and all(check.ok for check in report.checks)
+        and not report.passed
+    )
+    out["results"]["rate_edited_variance"] = (
+        report.variances[0].detail if report.variances else None)
+
+    restamped = [
+        figure.model_copy(update={
+            "source_versions": figure.source_versions.model_copy(
+                update={"fx_table": RateTable(
+                    version=3, reporting_currency="USD",
+                    rates={"EUR": "1.10"})}),
+        })
+        for figure in pack.figures
+    ]
+    report = verifier_module.verify(pack_v110, batches, restamped)
+    codes = [v.code for v in report.variances]
+    per_figure = {
+        v.metric_id for v in report.variances
+        if v.code == "RATE_TABLE_MISMATCH" and v.metric_id is not None
+    }
+    out["gates"]["figure converted off-stamp named per figure"] = (
+        "FIGURE_MISMATCH" not in codes
+        and "consolidated_revenue" in per_figure
+        and "consolidated_cash" in per_figure
+        and not report.passed
+    )
+    out["results"]["rate_offstamp_figures"] = sorted(per_figure)
     return out
 
 

@@ -4,6 +4,7 @@
   "phase_a_status": "BLOCKED",
   "phase_a_variance_codes": [
     "DUPLICATE_JOURNAL",
+    "IC_ONE_SIDED",
     "SUBLEDGER_TIE_OUT",
     "UNMATCHED_IC_LEG"
   ],
@@ -19,11 +20,45 @@
     "consolidated cash ties": true
   },
   "phase_b_status": "SIGNED_OFF",
+  "signed_stamp": {
+    "version": 2,
+    "reporting_currency": "USD",
+    "rates": {
+      "EUR": "1.10"
+    }
+  },
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "fd20093ef36f9fda2baaf3956c7d2453518b0d239613fd26bed7f13b33d712dd",
+  "evidence_sha256": "f1aecc975673dee4362ef1f9834af9e55bbf51bde8e1b6b9ccdc5fb9a3cfc6c7",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
+  "ic_october_pair": {
+    "elimination_id": "ic_sales",
+    "seller_id": "HLD",
+    "buyer_id": "HLE",
+    "revenue_account": "4200",
+    "cost_account": "5000",
+    "seller_amount": "61600.00",
+    "seller_currency": "USD",
+    "buyer_amount": "55000.00",
+    "buyer_currency": "EUR",
+    "basis_currency": "USD",
+    "buyer_amount_basis": "61600.00",
+    "fx_rate": "1.12",
+    "difference": "0.00",
+    "verdict": "AGREED",
+    "missing_side": null
+  },
+  "rate_changed_metrics": [
+    "consolidated_cash",
+    "consolidated_cogs",
+    "consolidated_gross_revenue",
+    "consolidated_operating_income",
+    "consolidated_opex",
+    "consolidated_revenue",
+    "eliminations_total",
+    "revenue_vs_plan"
+  ],
   "flux_material_entries": 12,
   "restatement_affected": {
     "opex@HLG": [
@@ -47,8 +82,54 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "ac052ada04ae24d7d939d13dc6e0f21f7e49623ebce379d508d22c60a8232f0d",
+  "october_evidence_sha256": "95a64343053a62611a2a5e5cc2782daec49e5c6cb95590d9bbe9a2f84e64372e",
   "october_status": "SIGNED_OFF",
+  "ic_variant_pair": {
+    "elimination_id": "ic_sales",
+    "seller_id": "HLD",
+    "buyer_id": "HLE",
+    "revenue_account": "4200",
+    "cost_account": "5000",
+    "seller_amount": "61600.00",
+    "seller_currency": "USD",
+    "buyer_amount": "54500.00",
+    "buyer_currency": "EUR",
+    "basis_currency": "USD",
+    "buyer_amount_basis": "61040.00",
+    "fx_rate": "1.12",
+    "difference": "560.00",
+    "verdict": "IC_DISAGREEMENT",
+    "missing_side": null
+  },
+  "ic_variant_status": "BLOCKED",
+  "rate_edited_variance": "the figures under verification stamp rate table v3 (EUR 1.12), but the source batches carry rate table v3 (EUR 1.15) (EUR: 1.12 stamped, 1.15 in the batches). The verifier recomputes at the stamped table \u2014 the rates the figures claim as their provenance. A rate table that moved after the run, or was edited in place under the same version, does not silently reprice a close that was struck at other rates",
+  "rate_offstamp_figures": [
+    "consolidated_cash",
+    "consolidated_cogs",
+    "consolidated_gross_revenue",
+    "consolidated_operating_income",
+    "consolidated_opex",
+    "consolidated_revenue",
+    "eliminations_total",
+    "revenue_vs_plan"
+  ],
+  "ic_signed_pair": {
+    "elimination_id": "ic_sales",
+    "seller_id": "HLD",
+    "buyer_id": "HLE",
+    "revenue_account": "4200",
+    "cost_account": "5000",
+    "seller_amount": "55000.00",
+    "seller_currency": "USD",
+    "buyer_amount": "50000.00",
+    "buyer_currency": "EUR",
+    "basis_currency": "USD",
+    "buyer_amount_basis": "55000.00",
+    "fx_rate": "1.1",
+    "difference": "0.00",
+    "verdict": "AGREED",
+    "missing_side": null
+  },
   "gates": {
     "planted traps named + blocked": true,
     "blocked pack refuses sign-off": true,
@@ -61,18 +142,32 @@
     "evidence regenerates byte-identical": true,
     "evidence digest matches stored bytes": true,
     "evidence refused for the blocked pack": true,
+    "ic one-sided pair named in the first attempt": true,
+    "ic agreed pair silent on the signed pack": true,
+    "evidence bundle carries the ic pairs": true,
+    "rate table stamped on the signed pack": true,
     "october gold figures exact": true,
+    "ic pair agrees in october": true,
     "comparatives tie to the signed pack": true,
     "definition changes flagged": true,
+    "rate changes flagged exactly": true,
     "flux identities hold for every comparative figure": true,
     "flux materiality flags the big movers": true,
     "flux definition-changed figures flagged": true,
+    "flux states both rate tables": true,
     "restatement named with gold figures": true,
     "unacknowledged restatement holds the signature": true,
     "acknowledged restatement signs": true,
     "signed prior pack byte-identical": true,
     "restated bundle carries restatement + acknowledgement": true,
-    "restated bundle carries the flux schedule": true
+    "restated bundle carries the flux schedule": true,
+    "october bundle carries the ic pairs": true,
+    "october bundle carries rate provenance": true,
+    "ic disagreement blocks with both figures": true,
+    "ic pair record equals the planted gold": true,
+    "ic flags mark exactly the consolidated figures on the pair": true,
+    "edited rate table named, figures reproduce at the stamp": true,
+    "figure converted off-stamp named per figure": true
   },
   "gate_passed": true
 }

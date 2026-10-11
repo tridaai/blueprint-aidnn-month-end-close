@@ -313,6 +313,11 @@ def world_json() -> str:
 #   figures, cited from the signed pack;
 # - the opex family compares across the v1.0.0 → v1.1.0
 #   definition change, and the pack must say so;
+# - the EUR rate moved between the two closes (September
+#   signed at 1.10, October converts at 1.12), and the
+#   consolidated figures standing on EUR money must say that
+#   too — flagged RATE_CHANGED (RATE_CHANGED_METRICS, below),
+#   never decomposed into a "rate effect";
 # - September's HLG extract is RESTATED after sign-off (below):
 #   a head-office payroll accrual was understated by 7,000. The
 #   signed September pack never changes; October's pack must
@@ -561,4 +566,32 @@ RESTATEMENT_AFFECTED: dict[str, tuple[str, str]] = {
 DEFINITION_CHANGED_METRICS = {
     "opex", "consolidated_opex", "consolidated_operating_income",
     "revenue_vs_plan",
+}
+
+# Metrics whose October comparative crosses the EUR rate move:
+# September signed at 1.10 (rate table v2), October converts at
+# 1.12 (table v3). A comparative is flagged RATE_CHANGED when
+# the figure is consolidated and its derivation converts money
+# booked in EUR with a nonzero amount in either month.
+# Enumerated by hand from the definition pack:
+# - the sum_converted figures over base metrics HLE carries
+#   nonzero EUR amounts in — revenue_external, cogs_external,
+#   opex, cash → consolidated_revenue, consolidated_cogs,
+#   consolidated_opex, consolidated_cash;
+# - eliminations_total: the ic_sales pair books a nonzero EUR
+#   cost leg in both months;
+# - what derives from those: consolidated_gross_revenue (add),
+#   consolidated_operating_income (subtract), revenue_vs_plan.
+# Deliberately NOT in the set: consolidated_ic_revenue — the
+# metric it converts, revenue_ic, is nonzero only in USD (HLE
+# books no intercompany revenue), so no EUR flows through its
+# conversion and the rate cannot have moved it — and
+# pipeline_open, a CRM total with no conversion in its
+# derivation at all. Entity figures are never flagged: they
+# stand in their own currency, untouched by any rate.
+RATE_CHANGED_METRICS = {
+    "consolidated_revenue", "consolidated_cogs",
+    "consolidated_opex", "consolidated_cash",
+    "eliminations_total", "consolidated_gross_revenue",
+    "consolidated_operating_income", "revenue_vs_plan",
 }
