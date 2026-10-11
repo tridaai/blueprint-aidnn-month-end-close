@@ -417,6 +417,32 @@ class CloseService:
                 "activation governs with a version that exists "
                 "as a pack file"
             )
+        activations = self.store.list_activations()
+        governing = governance_module.governing_activation(
+            activations, from_period)
+        current = governing.to_version if governing is not None \
+            else self.pack_def.version
+        if current == version:
+            raise GateError(
+                f"definition pack v{version} already governs "
+                f"{from_period}"
+                + (f" under activation {governing.activation_id}"
+                   if governing is not None
+                   else " as the deployment default")
+                + " — an activation that changes nothing is "
+                  "not an act, and is not recorded as one"
+            )
+        signed = comparatives_module.find_signed_pack(
+            self.store, from_period)
+        if signed is not None:
+            raise GateError(
+                f"period {from_period} is already signed (pack "
+                f"{signed.pack_id}, under definition pack "
+                f"v{signed.definition_pack_version}) — an "
+                "activation governs only periods not yet "
+                "signed; a signed period's cited version never "
+                "changes"
+            )
         dry_runs = [
             r for r in self.store.list_dry_runs()
             if r.report.pack_id == candidate.pack_id
@@ -432,32 +458,6 @@ class CloseService:
                 "its evidence"
             )
         dry_run = dry_runs[-1]
-        signed = comparatives_module.find_signed_pack(
-            self.store, from_period)
-        if signed is not None:
-            raise GateError(
-                f"period {from_period} is already signed (pack "
-                f"{signed.pack_id}, under definition pack "
-                f"v{signed.definition_pack_version}) — an "
-                "activation governs only periods not yet "
-                "signed; a signed period's cited version never "
-                "changes"
-            )
-        activations = self.store.list_activations()
-        current = governance_module.governing_version(
-            activations, from_period, self.pack_def.version)
-        if current == version:
-            raise GateError(
-                f"definition pack v{version} already governs "
-                f"{from_period}"
-                + (" under activation "
-                   f"{governance_module.governing_activation(activations, from_period).activation_id}"
-                   if governance_module.governing_activation(
-                       activations, from_period) is not None
-                   else " as the deployment default")
-                + " — an activation that changes nothing is "
-                  "not an act, and is not recorded as one"
-            )
         governing = governance_module.governing_activation(
             activations, from_period)
         supersedes = governing.activation_id \
@@ -505,7 +505,11 @@ class CloseService:
                 "period": period,
                 "version": activation.to_version
                 if activation is not None else self.pack_def.version,
+                "source": "activation" if activation is not None
+                else "deployment default",
                 "activation_id": activation.activation_id
+                if activation is not None else None,
+                "from_period": activation.from_period
                 if activation is not None else None,
             }
         return state
