@@ -29,6 +29,18 @@ which this module exists to keep named:
   ``DEFINITION_CHANGED`` with both versions named. Comparing
   across a silent definition change is how two honest numbers
   produce one dishonest column.
+- **Rate changes are flagged the same way.** Definitions are
+  one silent input; the rate table is the other. Both packs
+  stamp the table they converted with, and when a currency's
+  rate differs between the two stamps, a consolidated
+  comparative whose derivation converts money booked in that
+  currency is flagged ``rate_changed``. Entity figures are
+  never flagged — they stand in their own currency, and no
+  rate touches them. Like the definition flag, it is a flag,
+  not a decomposition: the movement is not split into "rate"
+  and "trading" parts, because that split would mean
+  converting one period at the other period's rates and
+  presenting the counterfactual as fact.
 
 Preparation happens in the service at build time (it needs the
 store: the signed pack, the received batches, the pack
@@ -50,10 +62,12 @@ from .definitions import (
     bundled_pack_dir,
     load_definition_pack_version,
 )
-from .fx import D, money, q
+from .fx import D, changed_currencies, money, q
 from .schemas import (
     BoardPack,
+    Figure,
     FigureComparative,
+    ICPair,
     RestatedFigure,
     RestatementReport,
     Variance,
@@ -132,6 +146,89 @@ def changed_metric_ids(old: DefinitionPack, new: DefinitionPack) -> set[str]:
     return changed
 
 
+def rate_exposed_metrics(pack_def: DefinitionPack,
+                         changed: dict[str, tuple[str | None, str | None]],
+                         current_figures: list[Figure],
+                         prior_figures: list[Figure],
+                         current_pairs: list[ICPair],
+                         prior_pairs: list[ICPair],
+                         ) -> set[str]:
+    """The consolidated metrics whose derivation converts money
+    booked in a changed currency — the figures a rate move
+    between the two packs' stamped tables can actually move.
+
+    Exposure is judged from the two packs' own records, not
+    from sources: a ``sum_converted`` figure is exposed to a
+    currency when an entity booking in that currency carries a
+    nonzero amount of the converted metric in either pack; an
+    elimination figure, when a pair on either pack books a
+    nonzero leg in that currency; ``add`` / ``subtract`` /
+    ``vs_plan`` figures inherit the exposure of what they read.
+    A conversion point no money flows through in the changed
+    currency exposes nothing — the flag means the rate *can*
+    have moved this number, and a flag that cries wolf on
+    figures the rate cannot touch would train readers to
+    ignore it."""
+    if not changed:
+        return set()
+    currencies = {e["entity_id"]: e["currency"] for e in pack_def.entities}
+    by_key = [
+        {(f.metric_id, f.entity_id): f for f in figures}
+        for figures in (current_figures, prior_figures)
+    ]
+
+    def base_currencies(metric_id: str) -> set[str]:
+        out: set[str] = set()
+        for entity_id, currency in currencies.items():
+            for figures in by_key:
+                figure = figures.get((metric_id, entity_id))
+                if figure is not None and D(figure.value) != 0:
+                    out.add(currency)
+        return out
+
+    def pair_currencies(elimination_id: str) -> set[str]:
+        out: set[str] = set()
+        for pair in list(current_pairs) + list(prior_pairs):
+            if pair.elimination_id != elimination_id:
+                continue
+            if pair.seller_amount is not None \
+                    and D(pair.seller_amount) != 0:
+                out.add(pair.seller_currency)
+            if pair.buyer_amount is not None \
+                    and D(pair.buyer_amount) != 0:
+                out.add(pair.buyer_currency)
+        return out
+
+    exposed: dict[str, set[str]] = {}
+
+    def currencies_of(metric_id: str) -> set[str]:
+        if metric_id in exposed:
+            return exposed[metric_id]
+        metric = pack_def.metric(metric_id)
+        derived = metric.derived
+        if derived is None:
+            result: set[str] = set()  # base figures convert nothing
+        elif derived.op == "sum_converted":
+            result = base_currencies(derived.of or "")
+        elif derived.op == "elimination":
+            result = pair_currencies(derived.elimination_id or "")
+        elif derived.op == "vs_plan":
+            result = currencies_of(derived.of or "")
+        else:  # add / subtract
+            result = set()
+            for arg in derived.args:
+                result |= currencies_of(arg)
+        exposed[metric_id] = result
+        return result
+
+    changed_set = set(changed)
+    return {
+        metric.metric_id for metric in pack_def.metrics
+        if metric.derived is not None and metric.scope == "consolidated"
+        and currencies_of(metric.metric_id) & changed_set
+    }
+
+
 @dataclass
 class ComparativeContext:
     """Everything the verify step needs about the prior period,
@@ -139,6 +236,7 @@ class ComparativeContext:
 
     prior_pack: BoardPack
     prior_pack_def: DefinitionPack | None  # None: version not on disk
+    current_pack_def: DefinitionPack | None = None
     definition_changed: set[str] = field(default_factory=set)
     restatement: RestatementReport | None = None
     # The batches the signed pack was built from, exactly as
@@ -233,6 +331,7 @@ def prepare_comparatives(store, current_pack: DefinitionPack, period: str,
     return ComparativeContext(
         prior_pack=prior,
         prior_pack_def=prior_def,
+        current_pack_def=current_pack,
         definition_changed=changed,
         restatement=_detect_restatement(store, prior, prior_def),
         prior_batches=prior_batches,
@@ -273,6 +372,20 @@ def attach_comparatives(pack: BoardPack, ctx: ComparativeContext,
     variances (which block the pack like any other)."""
     signed = ctx.prior_pack
     signed_by_key = {(f.metric_id, f.entity_id): f for f in signed.figures}
+    # The rate layer: which currencies moved between the signed
+    # pack's stamped table and this pack's, and which of this
+    # pack's consolidated figures convert money booked in them.
+    # Either stamp absent (a pack from before tables rode the
+    # stamp) → no changes, no flags: absence reads as absence.
+    changed_rates = changed_currencies(
+        signed.source_versions.fx_table, pack.source_versions.fx_table)
+    rate_exposed: set[str] = set()
+    if changed_rates and ctx.current_pack_def is not None:
+        rate_exposed = rate_exposed_metrics(
+            ctx.current_pack_def, changed_rates,
+            pack.figures, signed.figures,
+            pack.ic_pairs, signed.ic_pairs,
+        )
     restated_keys = set()
     if ctx.restatement is not None:
         restated_keys = {
@@ -301,6 +414,8 @@ def attach_comparatives(pack: BoardPack, ctx: ComparativeContext,
                 or signed.definition_pack_version
             ),
             definition_changed=figure.metric_id in ctx.definition_changed,
+            rate_changed=figure.entity_id is None
+            and figure.metric_id in rate_exposed,
             restated=(figure.metric_id, figure.entity_id) in restated_keys,
             change=change,
             change_pct=change_pct,

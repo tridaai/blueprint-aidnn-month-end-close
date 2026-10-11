@@ -29,6 +29,16 @@ The disciplines are the pack's own, extended one step:
   into "definition" and "trading" parts. Separating them would
   mean computing one period under the other's rule and
   presenting the counterfactual as fact.
+- **A rate change is named the same way.** Each side is also
+  converted at *its own period's* rate table — the table that
+  period's pack stamps — so when a rate moved between the two
+  closes, a flagged entry's movement includes the rate
+  movement. The schedule's face states both tables' versions
+  beside the definition versions, and the entry's note names
+  the rates that moved. It is not separated into a "rate"
+  part either, for the same reason: that would mean converting
+  one period at the other period's rates and presenting the
+  counterfactual as fact.
 - **The decomposition foots, exactly.** Contributions are
   Decimal sums end to end. Where conversion makes the parts
   and the whole round differently (an account cell converted
@@ -54,7 +64,7 @@ from decimal import Decimal
 
 from . import policy
 from .definitions import DefinitionPack, MetricDefinition
-from .fx import D, ZERO, RateTable, money, q
+from .fx import D, ZERO, RateTable, changed_currencies, money, q
 from .schemas import (
     Figure,
     FigureComparative,
@@ -84,6 +94,7 @@ class _Period:
 
     lines: dict[str, list[_Line]] = field(default_factory=dict)
     rates: RateTable = field(default_factory=lambda: RateTable(version=0))
+    has_rates: bool = False  # an FX batch actually carried a table
     crm_total: Decimal = ZERO
 
     @classmethod
@@ -93,6 +104,7 @@ class _Period:
         for batch in sorted(batches, key=lambda b: b.batch_id):
             if batch.kind == "fx" and batch.rate_table is not None:
                 period.rates = batch.rate_table
+                period.has_rates = True
             elif batch.kind == "crm":
                 for opp in batch.opportunities:
                     period.crm_total += D(opp.amount)
@@ -408,6 +420,18 @@ def build_schedule(current_def: DefinitionPack,
         return None
     current_data = _Period.from_batches(current_batches, current_def)
     prior_data = _Period.from_batches(prior_batches, prior_def)
+    # The rates that moved between the two periods' tables, from
+    # the same batch sets the decomposition reads — the note on
+    # a flagged entry names them from here, the flag itself from
+    # the comparative (which judged the packs' stamps).
+    rate_moves = changed_currencies(
+        prior_data.rates if prior_data.has_rates else None,
+        current_data.rates if current_data.has_rates else None,
+    )
+    rate_move_text = "; ".join(
+        f"{currency} {before} → {after}"
+        for currency, (before, after) in rate_moves.items()
+    )
     figure_by_key = {(f.metric_id, f.entity_id): f for f in figures}
     entries: list[FigureFlux] = []
     for comparative in comparatives:
@@ -448,6 +472,13 @@ def build_schedule(current_def: DefinitionPack,
                 "under its own period's definitions, so this "
                 "movement includes the definition change — named "
                 "here, not separated out")
+        if comparative.rate_changed and rate_move_text:
+            note = (note + " " if note else "") + (
+                f"rate changed between the two closes' rate "
+                f"tables ({rate_move_text}): each side is "
+                "converted at its own period's stamped rate, so "
+                "this movement includes the rate movement — "
+                "named here, not separated out")
         entries.append(FigureFlux(
             metric_id=comparative.metric_id,
             entity_id=comparative.entity_id,
@@ -458,6 +489,7 @@ def build_schedule(current_def: DefinitionPack,
             movement_pct=comparative.change_pct,
             material=material,
             definition_changed=comparative.definition_changed,
+            rate_changed=comparative.rate_changed,
             restated=comparative.restated,
             basis=(f"prior period under definition pack "
                    f"v{prior_def.version}; current under "
@@ -473,6 +505,10 @@ def build_schedule(current_def: DefinitionPack,
         prior_pack_id=prior_pack_id,
         current_definition_pack_version=current_def.version,
         prior_definition_pack_version=prior_def.version,
+        current_fx_version=current_data.rates.version
+        if current_data.has_rates else None,
+        prior_fx_version=prior_data.rates.version
+        if prior_data.has_rates else None,
         threshold_abs=policy.FLUX_MATERIAL_ABS,
         threshold_pct=policy.FLUX_MATERIAL_PCT,
         entries=entries,

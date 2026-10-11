@@ -158,6 +158,17 @@ class PackPipeline:
                           f"pack v{comparative_ctx.prior_pack.definition_pack_version}"
                           f" → v{pack.definition_pack_version}",
             })
+            rate_flagged = sorted({
+                c.metric_id for c in pack.comparatives if c.rate_changed
+            })
+            if rate_flagged:
+                pack.audit.append({
+                    "event": "rate_change_flagged", "at": _now(),
+                    "detail": f"{len(rate_flagged)} consolidated "
+                              "comparatives cross a rate change "
+                              "between the two packs' stamped rate "
+                              "tables: " + ", ".join(rate_flagged),
+                })
             if pack.restatement is not None:
                 variance = comparatives_module.restatement_variance(
                     pack.restatement

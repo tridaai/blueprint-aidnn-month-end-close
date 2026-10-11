@@ -1070,6 +1070,7 @@ def verify_flux(schedule: FluxSchedule,
                  "but the schedule's own stated thresholds judge it "
                  f"{'material' if material else 'immaterial'}")
         if entry.definition_changed != comparative.definition_changed \
+                or entry.rate_changed != comparative.rate_changed \
                 or entry.restated != comparative.restated:
             fail(metric_id, entity_id,
                  f"flux for {metric_id}{where} carries flags that "
