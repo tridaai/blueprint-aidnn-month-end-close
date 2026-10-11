@@ -30,6 +30,14 @@ service owns the close discipline the graph does not:
   next build re-verifies from source and is presented for
   sign-off only when every blocking variance is covered by a
   governing acceptance, with the acceptances on its face;
+- **definition changes are governed here** — a candidate
+  definition-pack version's impact is computed as a dry-run
+  over a signed period (see :mod:`.governance`) and recorded
+  before any activation may cite it; an activation names its
+  actor, its reason, and the period it governs from, and can
+  never reach a signed period. Which version governs a
+  period is computed from those records at run creation and
+  again at build, and printed on both;
 - **the audit evidence bundle is a projection** — generated
   only for a signed pack, assembled from stored records by
   :mod:`.evidence`, checked for completeness before anything
@@ -52,8 +60,9 @@ from langgraph.types import Command
 from . import comparatives as comparatives_module
 from . import dispositions as dispositions_module
 from . import evidence as evidence_module
+from . import governance as governance_module
 from . import guardrails
-from .definitions import DefinitionPack
+from .definitions import DefinitionPack, bundled_pack_dir
 from .errors import (
     BatchNotFound,
     BundleNotFound,
@@ -69,8 +78,10 @@ from .schemas import (
     Acknowledgement,
     BoardPack,
     CloseRun,
+    DefinitionDryRun,
     Disposition,
     EvidenceBundle,
+    PackActivation,
     SourceBatch,
 )
 
@@ -103,10 +114,27 @@ class CloseService:
         while self.store.get_run(run_id) is not None:
             run_id = f"{base}-{suffix}"
             suffix += 1
+        # The definition selection rule, applied and printed:
+        # the version governing this period is computed from
+        # the activation records (see governance.select_pack)
+        # and recorded on the run — never left implicit in
+        # whichever service object happened to be wired.
+        pack_def, activation = self.select_pack(period)
         run = CloseRun(
             run_id=run_id, period=period,
-            checklist={eid: {} for eid in self.pack_def.entity_ids()},
-            audit=[{"event": "run_created", "at": _now()}],
+            checklist={eid: {} for eid in pack_def.entity_ids()},
+            definition_pack_id=pack_def.pack_id,
+            definition_pack_version=pack_def.version,
+            audit=[{
+                "event": "run_created", "at": _now(),
+                "detail": f"definition pack {pack_def.pack_id} "
+                          f"v{pack_def.version} governs {period}"
+                          + (f" (activation "
+                             f"{activation.activation_id})"
+                             if activation is not None
+                             else " (deployment default — no "
+                                  "activation governs this period)"),
+            }],
             created_at=_now(), updated_at=_now(),
         )
         return self.store.save_run(run)
@@ -228,6 +256,260 @@ class CloseService:
             batches.append(batch)
         return batches
 
+    # -- definition governance ------------------------------------------
+
+    def _registry_dirs(self) -> list[Path]:
+        dirs: list[Path] = list(self.pack_dirs or [])
+        bundled = bundled_pack_dir()
+        if bundled not in dirs:
+            dirs.append(bundled)
+        return dirs
+
+    def definition_versions(self) -> list[DefinitionPack]:
+        """Every version of this deployment's pack the registry
+        holds, oldest first."""
+        return governance_module.registry_versions(
+            self.pack_def.pack_id, self._registry_dirs())
+
+    def select_pack(self, period: str,
+                    ) -> tuple[DefinitionPack, PackActivation | None]:
+        """The selection rule, in one place: the governing
+        activation for ``period`` (the latest act whose
+        from-period has arrived) names the version, loaded from
+        the registry; with no governing activation, the
+        deployment's wired pack governs, as it always has."""
+        activation = governance_module.governing_activation(
+            self.store.list_activations(), period)
+        if activation is None:
+            return self.pack_def, None
+        pack = governance_module.load_version(
+            activation.pack_id, activation.to_version,
+            self._registry_dirs())
+        if pack is None:
+            raise GateError(
+                f"activation {activation.activation_id} makes "
+                f"definition pack {activation.pack_id} "
+                f"v{activation.to_version} govern {period}, but "
+                "that version is not in the registry — a close "
+                "is never computed under a substitute version"
+            )
+        return pack, activation
+
+    def dry_run_definition_change(
+            self, candidate_version: str,
+            reference_period: str | None = None) -> DefinitionDryRun:
+        """Compute a candidate version's impact over a signed
+        period, and record it. Signs nothing, activates
+        nothing: the report is the evidence an activation
+        will have to cite.
+
+        The reference is the signed pack of ``reference_period``
+        (or the latest signed pack on record): the dry-run
+        recomputes that period from its stamped sources under
+        its own cited version and under the candidate, so the
+        change list is the candidate's effect and nothing
+        else's. Recomputing the same dry-run returns the
+        recorded one — the report is a pure function of its
+        inputs, and a recorded report whose digest no longer
+        reproduces is a refusal, not a quiet rewrite."""
+        candidate = governance_module.load_version(
+            self.pack_def.pack_id, candidate_version,
+            self._registry_dirs())
+        if candidate is None:
+            raise GateError(
+                f"definition pack {self.pack_def.pack_id} "
+                f"v{candidate_version} is not in the registry — "
+                "a dry-run measures a version that exists as a "
+                "pack file, not a version number in the air"
+            )
+        if reference_period is not None:
+            signed = comparatives_module.find_signed_pack(
+                self.store, reference_period)
+            if signed is None:
+                raise GateError(
+                    f"period {reference_period} has no signed "
+                    "pack to measure against — a dry-run needs a "
+                    "signed reference: the period whose stamped "
+                    "sources both versions are recomputed over"
+                )
+        else:
+            signed_candidates = [
+                p for p in self.store.list_packs()
+                if p.status == "SIGNED_OFF"
+            ]
+            if not signed_candidates:
+                raise GateError(
+                    "no signed pack on record — a dry-run "
+                    "measures a candidate against a period the "
+                    "board has already approved, and there is "
+                    "none yet"
+                )
+            signed = max(signed_candidates,
+                         key=lambda p: (p.created_at, p.pack_id))
+        if signed.definition_pack_id != candidate.pack_id:
+            raise GateError(
+                f"signed pack {signed.pack_id} cites definition "
+                f"pack {signed.definition_pack_id}, not "
+                f"{candidate.pack_id} — versions of one pack are "
+                "measured against their own pack's history"
+            )
+        base = governance_module.load_version(
+            signed.definition_pack_id, signed.definition_pack_version,
+            self._registry_dirs())
+        if base is None:
+            raise GateError(
+                f"signed pack {signed.pack_id} cites definition "
+                f"pack v{signed.definition_pack_version}, which "
+                "is not in the registry — its period cannot be "
+                "recomputed under its own definitions, so no "
+                "honest baseline exists"
+            )
+        report = governance_module.compute_dry_run(
+            self.store, signed, base, candidate, self.pipeline.engine)
+        digest = governance_module.report_digest(report)
+        dry_run_id = governance_module.dry_run_id_for(
+            candidate.pack_id, candidate_version, signed.pack_id)
+        existing = self.store.get_dry_run(dry_run_id)
+        if existing is not None:
+            if existing.digest != digest:
+                raise GateError(
+                    f"dry-run {dry_run_id} is on record with "
+                    f"digest {existing.digest}, but recomputing "
+                    f"it now produces {digest} — a definition "
+                    "file or a stamped source changed under the "
+                    "record, and the recorded impact is not "
+                    "quietly rewritten; resolve the registry "
+                    "before relying on either"
+                )
+            return existing
+        record = DefinitionDryRun(
+            dry_run_id=dry_run_id, report=report, digest=digest,
+            computed_at=_now(),
+        )
+        return self.store.save_dry_run(record)
+
+    def activate_definition_pack(self, version: str, from_period: str,
+                                 actor: str, reason: str,
+                                 ) -> PackActivation:
+        """Make a candidate version govern closes from
+        ``from_period`` onward, as a named, recorded act.
+
+        Refusals, each naming its ground: an unnamed actor; a
+        missing reason; a version the registry does not hold;
+        no dry-run on record for the version (the impact must
+        exist before the act, and the act cites it — id and
+        digest); the version already governing ``from_period``;
+        and a from-period that is already signed (a signed
+        period's pack keeps its cited version forever)."""
+        if not actor or not actor.strip():
+            raise GateError("an activation must name its actor")
+        if not reason or not reason.strip():
+            raise GateError(
+                "an activation must carry a reason — why this "
+                "definition change, in the activator's own words"
+            )
+        candidate = governance_module.load_version(
+            self.pack_def.pack_id, version, self._registry_dirs())
+        if candidate is None:
+            raise GateError(
+                f"definition pack {self.pack_def.pack_id} "
+                f"v{version} is not in the registry — an "
+                "activation governs with a version that exists "
+                "as a pack file"
+            )
+        dry_runs = [
+            r for r in self.store.list_dry_runs()
+            if r.report.pack_id == candidate.pack_id
+            and r.report.candidate_version == version
+        ]
+        if not dry_runs:
+            raise GateError(
+                f"no dry-run on record for definition pack "
+                f"{candidate.pack_id} v{version} — the impact "
+                "must be computed and recorded before it can be "
+                "activated (run the dry-run against a signed "
+                "period first); an activation never precedes "
+                "its evidence"
+            )
+        dry_run = dry_runs[-1]
+        signed = comparatives_module.find_signed_pack(
+            self.store, from_period)
+        if signed is not None:
+            raise GateError(
+                f"period {from_period} is already signed (pack "
+                f"{signed.pack_id}, under definition pack "
+                f"v{signed.definition_pack_version}) — an "
+                "activation governs only periods not yet "
+                "signed; a signed period's cited version never "
+                "changes"
+            )
+        activations = self.store.list_activations()
+        current = governance_module.governing_version(
+            activations, from_period, self.pack_def.version)
+        if current == version:
+            raise GateError(
+                f"definition pack v{version} already governs "
+                f"{from_period}"
+                + (" under activation "
+                   f"{governance_module.governing_activation(activations, from_period).activation_id}"
+                   if governance_module.governing_activation(
+                       activations, from_period) is not None
+                   else " as the deployment default")
+                + " — an activation that changes nothing is "
+                  "not an act, and is not recorded as one"
+            )
+        governing = governance_module.governing_activation(
+            activations, from_period)
+        supersedes = governing.activation_id \
+            if governing is not None \
+            and governing.from_period == from_period else None
+        record = PackActivation(
+            activation_id=(
+                f"ACT-{candidate.pack_id}-{len(activations) + 1}"),
+            pack_id=candidate.pack_id,
+            from_version=current,
+            to_version=version,
+            from_period=from_period,
+            dry_run_id=dry_run.dry_run_id,
+            dry_run_digest=dry_run.digest,
+            actor=actor, reason=reason, at=_now(),
+            supersedes=supersedes,
+        )
+        log.info(
+            "definition pack activated",
+            extra={"activation_id": record.activation_id,
+                   "to_version": version, "from_period": from_period,
+                   "actor": actor},
+        )
+        return self.store.save_activation(record)
+
+    def definition_state(self, period: str | None = None) -> dict:
+        """The governance state of the deployment's pack: the
+        versions on record, the dry-runs, the activations, and
+        — for ``period`` — the version the selection rule
+        assigns and the act that assigned it."""
+        activations = self.store.list_activations()
+        state: dict = {
+            "pack_id": self.pack_def.pack_id,
+            "default_version": self.pack_def.version,
+            "registry_versions": [
+                p.version for p in self.definition_versions()],
+            "dry_runs": [r.model_dump()
+                         for r in self.store.list_dry_runs()],
+            "activations": [a.model_dump() for a in activations],
+        }
+        if period is not None:
+            activation = governance_module.governing_activation(
+                activations, period)
+            state["governing"] = {
+                "period": period,
+                "version": activation.to_version
+                if activation is not None else self.pack_def.version,
+                "activation_id": activation.activation_id
+                if activation is not None else None,
+            }
+        return state
+
     # -- pack build ------------------------------------------------------
 
     def build_pack(self, run_id: str) -> BoardPack:
@@ -239,17 +521,41 @@ class CloseService:
                 + ", ".join(missing)
             )
         batches = self._current_batches(run)
-        marts = build_marts(batches, self.pack_def)
+        # The build runs under the version the selection rule
+        # assigns to the run's period — which may have moved
+        # since the run was created (an activation landed in
+        # between); the pack's own audit names it when it has.
+        pack_def, activation = self.select_pack(run.period)
+        marts = build_marts(batches, pack_def)
         pack_id = f"PACK-{run.run_id}-{len(run.pack_ids) + 1}"
         # The comparative layer is prepared here, where the
         # store lives: the prior period's signed pack, the
         # definition versions on both sides, and whether the
         # prior period's sources have been restated since.
         comparative_ctx = comparatives_module.prepare_comparatives(
-            self.store, self.pack_def, run.period, self.pack_dirs
+            self.store, pack_def, run.period, self.pack_dirs
         )
+        # The governance layer likewise: when this build is the
+        # first governed by a newly activated version, the
+        # change statement the pack carries on its face.
+        change_statement = governance_module.prepare_change_statement(
+            self.store, run.period, pack_def, activation)
         self.pipeline.contexts[pack_id] = {
             "marts": marts, "batches": batches,
+            "pack_def": pack_def,
+            "definition_change": change_statement,
+            "selection_note": (
+                f"definition pack v{pack_def.version} governs "
+                f"{run.period}"
+                + (f" (activation {activation.activation_id})"
+                   if activation is not None
+                   else " (deployment default)")
+                + (f"; the run was created expecting "
+                   f"v{run.definition_pack_version}"
+                   if run.definition_pack_version
+                   and run.definition_pack_version != pack_def.version
+                   else "")
+            ),
             "comparatives": comparative_ctx,
             # The disposition layer, prepared here for the same
             # reason: the run's governing acceptances (a rebuild

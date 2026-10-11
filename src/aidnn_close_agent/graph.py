@@ -78,15 +78,19 @@ class PackPipeline:
     def _engine(self, state: PackState) -> dict:
         context = self.contexts[state["pack_id"]]
         marts: MartSet = context["marts"]
-        figures = self.engine.answer(self.pack_def, marts)
+        # The build's definition pack comes from the service's
+        # selection for the period (see governance) when one is
+        # registered; the pipeline's wired pack is the default.
+        pack_def = context.get("pack_def") or self.pack_def
+        figures = self.engine.answer(pack_def, marts)
         pack = BoardPack(
             pack_id=state["pack_id"],
             run_id=state["run_id"],
             period=state["period"],
             status="BLOCKED",
             figures=figures,
-            definition_pack_id=self.pack_def.pack_id,
-            definition_pack_version=self.pack_def.version,
+            definition_pack_id=pack_def.pack_id,
+            definition_pack_version=pack_def.version,
             mart_version=marts.mart_version,
             source_versions=marts.source_versions,
             audit=[{"event": "figures_proposed", "at": _now(),
@@ -100,9 +104,10 @@ class PackPipeline:
     def _verify(self, state: PackState) -> dict:
         context = self.contexts[state["pack_id"]]
         batches: list[SourceBatch] = context["batches"]
+        pack_def = context.get("pack_def") or self.pack_def
         pack = self.store.get_pack(state["pack_id"])
         assert pack is not None
-        report = verifier_module.verify(self.pack_def, batches, pack.figures)
+        report = verifier_module.verify(pack_def, batches, pack.figures)
         checks = {(c.metric_id, c.entity_id): c for c in report.checks}
         for figure in pack.figures:
             check = checks.get((figure.metric_id, figure.entity_id))
@@ -122,7 +127,7 @@ class PackPipeline:
                       if p.verdict != "AGREED"}
         if open_elims:
             flagged = verifier_module.ic_flagged_metrics(
-                self.pack_def, open_elims)
+                pack_def, open_elims)
             for figure in pack.figures:
                 if figure.entity_id is None \
                         and figure.metric_id in flagged:
@@ -191,7 +196,7 @@ class PackPipeline:
         flux_failures: list = []
         if comparative_ctx is not None and pack.comparatives:
             schedule = flux_module.build_schedule(
-                self.pack_def, comparative_ctx.prior_pack_def,
+                pack_def, comparative_ctx.prior_pack_def,
                 batches, comparative_ctx.prior_batches,
                 pack.figures, pack.comparatives,
                 prior_period=comparative_ctx.prior_pack.period,
@@ -200,7 +205,7 @@ class PackPipeline:
             if schedule is not None:
                 pack.flux = schedule
                 flux_failures = verifier_module.verify_flux(
-                    schedule, self.pack_def,
+                    schedule, pack_def,
                     comparative_ctx.prior_pack_def,
                     batches, comparative_ctx.prior_batches or [],
                     pack.figures, pack.comparatives,
@@ -225,6 +230,35 @@ class PackPipeline:
                               "decomposition under the wrong "
                               "definitions would be a fabrication",
                 })
+
+        # The definition-governance layer: the selection that
+        # governed this build is named on the pack, and when
+        # the build is the first under a newly activated
+        # version, the change statement rides its face — who
+        # activated the version, why, and what the dry-run
+        # found before the act (see governance).
+        selection_note = context.get("selection_note")
+        if selection_note:
+            pack.audit.append({
+                "event": "definition_selected", "at": _now(),
+                "detail": selection_note,
+            })
+        change = context.get("definition_change")
+        if change is not None:
+            pack.definition_change = change
+            pack.audit.append({
+                "event": "definition_change_stated", "at": _now(),
+                "detail": f"first pack governed by definition "
+                          f"pack v{change.to_version} (activation "
+                          f"{change.activation_id} by "
+                          f"{change.actor}, governing from "
+                          f"{change.from_period}): the dry-run "
+                          f"it relied on ({change.dry_run_id}) "
+                          f"found {change.moved_count} figure(s) "
+                          f"moved, {change.added_count} added, "
+                          f"{change.dropped_count} dropped over "
+                          f"the prior signed period",
+            })
 
         # The disposition layer: governance around the verdict,
         # consulted only after the verdict is fully computed.
