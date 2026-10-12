@@ -244,6 +244,47 @@ by name. Its gates:
   record and degrades to absent by design, so there is no
   prior-period gate to stage.
 
+A tenth act exercises **the post-sign-off source watch** —
+the look back at periods already signed. September closes
+and signs on a fresh store; a corrected extract then lands
+outside any run, the way restatements arrive. Its gates:
+
+- **quiet, then named** — before the delivery the watch is
+  empty; after it, exactly one item stands OPEN, naming
+  the slot, the delivery the pack signed against (v1) and
+  the chain's new tip (v2), the full chain, and the
+  delivery's phase;
+- **an unsigned period raises nothing** — on a second
+  store, September built but never signed receives the
+  same delivery and the watch stays empty: the watch
+  covers signed periods only;
+- **acknowledgement covers exactly the movement it saw** —
+  a controller records RESTATEMENT_PLANNED at the v2 tip;
+  the refusals name their grounds (an unnamed controller,
+  a missing reason, a period with no signed pack, a slot
+  that has not moved, a tip that is not the chain's tip,
+  and a second answer at the same tip);
+- **no action stays on the record** — a memo-only HLE
+  re-delivery is answered NO_ACTION with the controller's
+  reason, and sits in the considered section of the
+  rendered watch, reason quoted;
+- **a further movement re-opens** — the HLG chain advances
+  again (v3: the correction corrected) and the item stands
+  OPEN at the new tip, past its v2 acknowledgement, the
+  chain naming both landings;
+- **the read is pure** — the store is byte-identical
+  across watch reads, and the signed September pack is
+  byte-identical at the end of everything: the watch and
+  its acknowledgements write nothing but the
+  acknowledgement records themselves;
+- **the road answers** — October closes over the same
+  store; its restatement report names both movements, a
+  controller acknowledges it, and October signs: both
+  September items read ANSWERED, derived from October's
+  own record, the NO_ACTION acknowledgement still quoted
+  on the item it covered — and an answered movement takes
+  no further acknowledgement, refused by name.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -270,12 +311,14 @@ from aidnn_close_agent.datasets import (  # noqa: E402
     IC_VARIANT_BATCH_ID,
     IC_VARIANT_FLAGGED,
     IC_VARIANT_PAIR,
+    MEMO_RESTATEMENT_BATCH_ID,
     PERIOD,
     PERIOD_NOVEMBER,
     PERIOD_OCTOBER,
     RATE_CHANGED_METRICS,
     RESTATEMENT_AFFECTED,
     RESTATEMENT_BATCH_ID,
+    SECOND_RESTATEMENT_BATCH_ID,
     V120_CHANGED_METRICS,
     V120_DRY_RUN_ADDED,
     V120_DRY_RUN_MOVED,
@@ -289,6 +332,7 @@ from aidnn_close_agent.definitions import (  # noqa: E402
     load_definition_pack_version,
 )
 from aidnn_close_agent import comparatives as comparatives_module  # noqa: E402
+from aidnn_close_agent import sourcewatch as watch_module  # noqa: E402
 from aidnn_close_agent.demo import build_demo_service  # noqa: E402
 from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
 from aidnn_close_agent.errors import (  # noqa: E402
@@ -469,6 +513,9 @@ def evaluate() -> dict:
     chain = _evaluate_chain()
     results.update(chain["results"])
 
+    source_watch = _evaluate_source_watch()
+    results.update(source_watch["results"])
+
     first_pair_ok = (
         len(first.ic_pairs) == 1
         and first.ic_pairs[0].verdict == "ONE_SIDED"
@@ -519,6 +566,7 @@ def evaluate() -> dict:
         **drill_tamper["gates"],
         **readiness["gates"],
         **chain["gates"],
+        **source_watch["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -2088,6 +2136,264 @@ def _evaluate_chain() -> dict:
         and document["sign_off"]["actor"] == controller
         and "signed under the single-act sign-off"
         in raw_text.decode("utf-8"))
+    return out
+
+
+def _evaluate_source_watch() -> dict:
+    """Act ten: the post-sign-off source watch — the signed
+    period whose inputs moved, named on read, answered by
+    a controller's acknowledgement or by the restatement
+    road, never by the watch itself.
+
+    The gates, in the order the act walks them:
+
+    - ``watch: a signed period with unmoved sources is
+      quiet`` — September signed, nothing landed: no items;
+    - ``watch: an unsigned period raises nothing`` — a
+      second store's September is built, never signed, and
+      receives the same delivery: still no items;
+    - ``watch: the movement is named with both versions`` —
+      the corrected HLG extract lands outside any run and
+      exactly one item stands OPEN: slot, signed-against
+      delivery and version, chain tip and version, the
+      chain itself, the landing's phase;
+    - ``watch: acknowledgement refusals name their
+      grounds`` — unnamed controller, missing reason,
+      unsigned period, unmoved slot, and a tip that is not
+      the chain's tip, each refused in words;
+    - ``watch: an acknowledgement covers exactly the
+      movement it saw`` — RESTATEMENT_PLANNED at the v2 tip
+      stands on the item with actor and reason, and a
+      second answer at the same tip is refused, naming the
+      standing record;
+    - ``watch: no-action items stay on the record,
+      reasoned`` — the memo-only HLE re-delivery is
+      answered NO_ACTION and renders in the considered
+      section with the reason quoted;
+    - ``watch: a further movement re-opens past its
+      acknowledgement`` — the HLG chain advances to v3 and
+      the item stands OPEN at the new tip, its chain naming
+      both landings;
+    - ``watch: the read is pure, the signed pack
+      untouched`` — the store is byte-identical across
+      reads, and recording an acknowledgement leaves every
+      batch, run, pack, and bundle byte-identical (the
+      acknowledgement record is the only thing it writes);
+    - ``watch: the signed restatement road answers the
+      movement`` — October builds over the same store, its
+      restatement acknowledged, its pack signed: both
+      September items read ANSWERED off October's record,
+      the NO_ACTION acknowledgement still quoted, nothing
+      OPEN;
+    - ``watch: an answered movement takes no
+      acknowledgement`` — refused by name;
+    - ``watch: the signed pack stands byte-identical`` —
+      at the end of everything.
+    """
+    out: dict = {"results": {}, "gates": {}}
+    gates = out["gates"]
+    controller = "Eval Controller"
+
+    def refused(fn) -> str:
+        try:
+            fn()
+        except GateError as exc:
+            return str(exc)
+        return ""
+
+    def snapshot(store, *, acks: bool = True) -> str:
+        parts = []
+        record_sets = [
+            store.list_batches(), store.list_runs(),
+            store.list_packs(), store.list_bundles(),
+            store.list_manifests(), store.list_waivers(),
+            store.list_activations(), store.list_dry_runs(),
+        ]
+        if acks:
+            record_sets.append(store.list_watch_acknowledgements())
+        for records in record_sets:
+            parts.extend(r.model_dump_json() for r in records)
+        return "\n".join(sorted(parts))
+
+    def item(report, slot):
+        return next((i for i in report.items if i.slot == slot), None)
+
+    service = build_demo_service()
+    store = service.store
+    world = build_world()
+    run = service.create_run(PERIOD)
+    service.ingest(run.run_id,
+                   [b.batch_id for b in world.batches_in_phase("initial")])
+    service.build_pack(run.run_id)
+    service.ingest(run.run_id,
+                   [b.batch_id for b in world.batches_in_phase("late")])
+    pack = service.build_pack(run.run_id)
+    _chain(service, pack.pack_id)
+    signed = service.sign_off(pack.pack_id, "sign", controller)
+    signed_json = signed.model_dump_json()
+
+    gates["watch: a signed period with unmoved sources is quiet"] = (
+        service.source_watch().items == [])
+
+    # An unsigned period raises nothing: a second store
+    # builds September, never signs it, and receives the
+    # same delivery.
+    unsigned = build_demo_service()
+    urun = unsigned.create_run(PERIOD)
+    unsigned.ingest(urun.run_id,
+                    [b.batch_id for b in world.batches_in_phase("initial")])
+    unsigned.ingest(urun.run_id,
+                    [b.batch_id for b in world.batches_in_phase("late")])
+    unsigned.build_pack(urun.run_id)
+    unsigned.receive_restatement(RESTATEMENT_BATCH_ID)
+    gates["watch: an unsigned period raises nothing"] = (
+        unsigned.source_watch().items == [])
+
+    # The movement, named with both versions.
+    service.receive_restatement(RESTATEMENT_BATCH_ID)
+    report = service.source_watch()
+    hlg = item(report, "HLG:gl")
+    gates["watch: the movement is named with both versions"] = (
+        len(report.items) == 1 and hlg is not None
+        and hlg.period == PERIOD and hlg.pack_id == signed.pack_id
+        and hlg.signed_batch_id == "B-HLG-GL-v1"
+        and hlg.signed_version == 1
+        and hlg.tip_batch_id == RESTATEMENT_BATCH_ID
+        and hlg.tip_version == 2
+        and hlg.chain == [RESTATEMENT_BATCH_ID]
+        and hlg.landed_phase == "restatement"
+        and hlg.state == "OPEN")
+    out["results"]["watch_open_item"] = (
+        hlg.model_dump() if hlg is not None else None)
+
+    # The refusals, each naming its ground.
+    gates["watch: acknowledgement refusals name their grounds"] = (
+        "must name its controller" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLG:gl", RESTATEMENT_BATCH_ID,
+                "RESTATEMENT_PLANNED", "", "a reason"))
+        and "must carry a reason" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLG:gl", RESTATEMENT_BATCH_ID,
+                "RESTATEMENT_PLANNED", controller, ""))
+        and "no signed pack" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD_OCTOBER, "HLG:gl", RESTATEMENT_BATCH_ID,
+                "NO_ACTION", controller, "a reason"))
+        and "has not moved" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLD:gl", "B-HLD-GL-v2",
+                "NO_ACTION", controller, "a reason"))
+        and "now ends at B-HLG-GL-v2" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLG:gl", "B-HLG-GL-v9",
+                "NO_ACTION", controller, "a reason")))
+
+    # RESTATEMENT_PLANNED at the tip the controller saw;
+    # a second answer at the same tip refused by name.
+    service.acknowledge_source_movement(
+        PERIOD, "HLG:gl", RESTATEMENT_BATCH_ID,
+        "RESTATEMENT_PLANNED", controller,
+        "September will be restated; the plan is recorded, "
+        "the restatement itself is October's build to make.")
+    hlg = item(service.source_watch(), "HLG:gl")
+    gates["watch: an acknowledgement covers exactly the "
+          "movement it saw"] = (
+        hlg is not None and hlg.state == "ACKNOWLEDGED"
+        and hlg.disposition == "RESTATEMENT_PLANNED"
+        and hlg.acknowledged_by == controller
+        and "already acknowledged by" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLG:gl", RESTATEMENT_BATCH_ID,
+                "NO_ACTION", controller, "changed my mind")))
+
+    # The memo-only re-delivery: NO_ACTION, on the record.
+    # The acknowledgement writes only itself: the core
+    # snapshot (every aggregate but the watch's own records)
+    # is taken around it.
+    service.receive_restatement(MEMO_RESTATEMENT_BATCH_ID)
+    core_before_ack = snapshot(store, acks=False)
+    service.acknowledge_source_movement(
+        PERIOD, "HLE:gl", MEMO_RESTATEMENT_BATCH_ID, "NO_ACTION",
+        controller,
+        "The re-delivery corrects one journal memo; every "
+        "amount stands as booked, so no figure can move.")
+    ack_wrote_only_itself = (
+        snapshot(store, acks=False) == core_before_ack)
+    report = service.source_watch()
+    hle = item(report, "HLE:gl")
+    rendered = watch_module.render_text(report)
+    gates["watch: no-action items stay on the record, reasoned"] = (
+        hle is not None and hle.state == "ACKNOWLEDGED"
+        and hle.disposition == "NO_ACTION"
+        and "CONSIDERED — no action, on the record" in rendered
+        and "every amount stands as booked" in rendered)
+
+    # The chain advances again: the v2 acknowledgement does
+    # not reach the v3 tip.
+    service.receive_restatement(SECOND_RESTATEMENT_BATCH_ID)
+    hlg = item(service.source_watch(), "HLG:gl")
+    gates["watch: a further movement re-opens past its "
+          "acknowledgement"] = (
+        hlg is not None and hlg.state == "OPEN"
+        and hlg.tip_batch_id == SECOND_RESTATEMENT_BATCH_ID
+        and hlg.tip_version == 3
+        and hlg.chain == [RESTATEMENT_BATCH_ID,
+                          SECOND_RESTATEMENT_BATCH_ID])
+
+    # Purity: reads write nothing; the acknowledgement
+    # wrote nothing but itself (checked around it, above).
+    before = snapshot(store)
+    service.source_watch()
+    service.source_watch(PERIOD)
+    gates["watch: the read is pure, the signed pack untouched"] = (
+        snapshot(store) == before
+        and ack_wrote_only_itself
+        and service.get_pack(signed.pack_id).model_dump_json()
+        == signed_json)
+
+    # The road answers: October builds over the same store,
+    # its restatement acknowledged, its pack signed.
+    pack_v110 = load_definition_pack_version("harborlight-close",
+                                             "1.1.0")
+    october = CloseService(
+        pipeline=PackPipeline(
+            engine=OfflineFinanceEngine(), store=store,
+            pack=pack_v110, checkpointer=MemorySaver()),
+        store=store, connector=service.connector,
+        objects=service.objects, pack_def=pack_v110)
+    orun = october.create_run(PERIOD_OCTOBER)
+    october.ingest(orun.run_id,
+                   [b.batch_id for b in build_october_world().batches])
+    opack = october.build_pack(orun.run_id)
+    october.acknowledge_restatement(
+        opack.pack_id, controller,
+        "Reviewed the September movements with FP&A; both "
+        "restated extracts are in the audit file.")
+    _chain(october, opack.pack_id)
+    osigned = october.sign_off(opack.pack_id, "sign", controller)
+    report = service.source_watch()
+    hlg = item(report, "HLG:gl")
+    hle = item(report, "HLE:gl")
+    gates["watch: the signed restatement road answers the "
+          "movement"] = (
+        hlg is not None and hlg.state == "ANSWERED"
+        and hlg.answered_by_pack_id == osigned.pack_id
+        and hle is not None and hle.state == "ANSWERED"
+        and hle.disposition == "NO_ACTION"
+        and hle.acknowledged_by == controller
+        and watch_module.open_items(report) == [])
+    out["results"]["watch_items_final"] = [
+        i.model_dump() for i in report.items]
+
+    gates["watch: an answered movement takes no acknowledgement"] = (
+        "already answered by" in refused(
+            lambda: service.acknowledge_source_movement(
+                PERIOD, "HLG:gl", SECOND_RESTATEMENT_BATCH_ID,
+                "NO_ACTION", controller, "late to the record")))
+    gates["watch: the signed pack stands byte-identical"] = (
+        service.get_pack(signed.pack_id).model_dump_json()
+        == signed_json)
     return out
 
 

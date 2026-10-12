@@ -30,7 +30,7 @@
   "evidence_drills": 25,
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "7b07b8e886a8753f5da89f163ee47ad279d2846025b47bbf791b534468bbf513",
+  "evidence_sha256": "93eae1a870fd2da8ef08ea254c41a4a0d1e884f80eae112e3706fffedc831ac9",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -83,7 +83,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "1e27b6c9967ec4de08336df438ad3c0706ca363f4f2999705983e32d8639a0bc",
+  "october_evidence_sha256": "bace693a7e30004a968475d058e13426704f9bfdf64611a6b3639f5b62c33892",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -132,7 +132,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-12T02:05:04.258250+00:00",
+      "at": "2026-10-12T02:57:34.096689+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -151,7 +151,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-12T02:05:04.264367+00:00",
+      "at": "2026-10-12T02:57:34.106539+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -204,7 +204,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-12T02:05:04.317694+00:00",
+      "at": "2026-10-12T02:57:34.163730+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -223,7 +223,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-12T02:05:04.317741+00:00",
+      "at": "2026-10-12T02:57:34.163780+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -323,7 +323,7 @@
       "baseline_discrepancies": []
     },
     "digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
-    "computed_at": "2026-10-12T02:05:04.408820+00:00"
+    "computed_at": "2026-10-12T02:57:34.258974+00:00"
   },
   "governance_activation": {
     "activation_id": "ACT-harborlight-close-1",
@@ -335,7 +335,7 @@
     "dry_run_digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
     "actor": "Eval Controller",
     "reason": "Insurance premiums are reported to the board on their own line from November; they leave operating expenses and stand separately. Measured first, per the dry-run.",
-    "at": "2026-10-12T02:05:04.416312+00:00",
+    "at": "2026-10-12T02:57:34.266527+00:00",
     "supersedes": null
   },
   "governance_november_pack": "PACK-RUN-2026-11-1",
@@ -367,6 +367,63 @@
     "revenue_vs_plan": 5
   },
   "drill_mismatch": "DRILL_MISMATCH: figure revenue_external for HLE on pack PACK-RUN-2026-09-2: the lines in the pack's stamped sources compose to 616000.00 EUR, but the pack records 615000.00 \u2014 the drill refuses to present a composition that does not foot to the figure. A source record has moved under the pack's stamps, or the figure was not produced from them",
+  "watch_open_item": {
+    "period": "2026-09",
+    "pack_id": "PACK-RUN-2026-09-2",
+    "slot": "HLG:gl",
+    "signed_batch_id": "B-HLG-GL-v1",
+    "signed_version": 1,
+    "tip_batch_id": "B-HLG-GL-v2",
+    "tip_version": 2,
+    "chain": [
+      "B-HLG-GL-v2"
+    ],
+    "landed_phase": "restatement",
+    "state": "OPEN",
+    "disposition": null,
+    "acknowledged_by": null,
+    "acknowledgement_reason": null,
+    "answered_by_pack_id": null
+  },
+  "watch_items_final": [
+    {
+      "period": "2026-09",
+      "pack_id": "PACK-RUN-2026-09-2",
+      "slot": "HLE:gl",
+      "signed_batch_id": "B-HLE-GL-v2",
+      "signed_version": 2,
+      "tip_batch_id": "B-HLE-GL-v3",
+      "tip_version": 3,
+      "chain": [
+        "B-HLE-GL-v3"
+      ],
+      "landed_phase": "restatement",
+      "state": "ANSWERED",
+      "disposition": "NO_ACTION",
+      "acknowledged_by": "Eval Controller",
+      "acknowledgement_reason": "The re-delivery corrects one journal memo; every amount stands as booked, so no figure can move.",
+      "answered_by_pack_id": "PACK-RUN-2026-10-1"
+    },
+    {
+      "period": "2026-09",
+      "pack_id": "PACK-RUN-2026-09-2",
+      "slot": "HLG:gl",
+      "signed_batch_id": "B-HLG-GL-v1",
+      "signed_version": 1,
+      "tip_batch_id": "B-HLG-GL-v3",
+      "tip_version": 3,
+      "chain": [
+        "B-HLG-GL-v2",
+        "B-HLG-GL-v3"
+      ],
+      "landed_phase": "restatement",
+      "state": "ANSWERED",
+      "disposition": null,
+      "acknowledged_by": null,
+      "acknowledgement_reason": null,
+      "answered_by_pack_id": "PACK-RUN-2026-10-1"
+    }
+  ],
   "ic_signed_pair": {
     "elimination_id": "ic_sales",
     "seller_id": "HLD",
@@ -468,7 +525,18 @@
     "chain: signed pack byte-identical after later builds": true,
     "chain: bundle carries all three acts": true,
     "chain: withdrawal after signature refused": true,
-    "chain: legacy bundle states its single signature, no invented acts": true
+    "chain: legacy bundle states its single signature, no invented acts": true,
+    "watch: a signed period with unmoved sources is quiet": true,
+    "watch: an unsigned period raises nothing": true,
+    "watch: the movement is named with both versions": true,
+    "watch: acknowledgement refusals name their grounds": true,
+    "watch: an acknowledgement covers exactly the movement it saw": true,
+    "watch: no-action items stay on the record, reasoned": true,
+    "watch: a further movement re-opens past its acknowledgement": true,
+    "watch: the read is pure, the signed pack untouched": true,
+    "watch: the signed restatement road answers the movement": true,
+    "watch: an answered movement takes no acknowledgement": true,
+    "watch: the signed pack stands byte-identical": true
   },
   "gate_passed": true
 }
