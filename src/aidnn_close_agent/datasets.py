@@ -604,6 +604,35 @@ def build_november_world(ic_purchase: str = "54500.00") -> World:
     )
 
 
+# ---------------------------------------------------------------------------
+# The expectation manifests, derived from the worlds.
+#
+# A period's manifest states what its close expects to
+# receive. For the bundled periods the expectation is not
+# invented: it is derived from the batches the closes
+# actually used — for each source slot, the terminal delivery
+# of the world's supersession chain (September's close signed
+# on the corrected HLD/HLE extracts at v2 and the revised
+# rate table at v2; October and November closed on their
+# first deliveries throughout). The manifests are seeded as
+# data (recorded through the service, by a named author, with
+# this derivation as the note) so readiness over history is
+# demonstrable; a deployment authors its own the same way.
+# ---------------------------------------------------------------------------
+
+def build_manifest_entries(period: str) -> list:
+    """The manifest entries the period's world implies, in
+    slot order — see the derivation note above."""
+    from .readiness import derive_entries
+
+    worlds = {
+        PERIOD: build_world,
+        PERIOD_OCTOBER: build_october_world,
+        PERIOD_NOVEMBER: lambda: build_november_world(),
+    }
+    return derive_entries(worlds[period]().batches)
+
+
 RESTATEMENT_BATCH_ID = "B-HLG-GL-v2"
 
 
