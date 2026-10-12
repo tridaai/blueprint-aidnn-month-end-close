@@ -16,6 +16,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, Request
 from fastapi.responses import (
@@ -24,7 +25,7 @@ from fastapi.responses import (
     JSONResponse,
     Response,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from . import db
 from .checkpoints import checkpointer_name
@@ -39,8 +40,14 @@ log = logging.getLogger(__name__)
 _STATIC = Path(__file__).resolve().parent / "static"
 
 
+# A close period is a calendar month, ``YYYY-MM``. Validated at the
+# boundary so a malformed one is a 422, not a crash in the month
+# arithmetic (comparatives, readiness) that every later step runs.
+Period = Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+
+
 class CreateRunRequest(BaseModel):
-    period: str
+    period: Period
 
 
 class IngestRequest(BaseModel):
@@ -88,32 +95,32 @@ class DispositionRequest(BaseModel):
 
 class DryRunRequest(BaseModel):
     candidate_version: str
-    reference_period: str | None = None
+    reference_period: Period | None = None
 
 
 class ActivateRequest(BaseModel):
     version: str
-    from_period: str
+    from_period: Period
     actor: str
     reason: str
 
 
 class ManifestRequest(BaseModel):
-    period: str
+    period: Period
     actor: str
     note: str
     entries: list[ManifestEntry]
 
 
 class WaiverRequest(BaseModel):
-    period: str
+    period: Period
     items: list[str]
     actor: str
     reason: str
 
 
 class WatchAcknowledgeRequest(BaseModel):
-    period: str
+    period: Period
     slot: str
     tip_batch_id: str
     disposition: str

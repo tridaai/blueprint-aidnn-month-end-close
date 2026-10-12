@@ -36,6 +36,18 @@ def test_build_before_ingestion_is_a_409(client):
     assert "still waiting for" in response.json()["detail"]
 
 
+@pytest.mark.parametrize("period", ["Sept 2026", "2026-13", "2026-9", ""])
+def test_a_malformed_period_is_a_422_not_a_crash(client, period):
+    # A run on a malformed period used to be accepted, and every
+    # later step's month arithmetic (a waiver's readiness check,
+    # comparatives) then failed with a 500.
+    assert client.post("/runs", json={"period": period}).status_code == 422
+    waiver = client.post("/waivers", json={
+        "period": period, "items": ["x"], "actor": "Mara Ellison",
+        "reason": "r"})
+    assert waiver.status_code == 422
+
+
 def test_demo_run_endpoint_tells_the_whole_story(client):
     out = client.post("/demo/run").json()
     assert out["first_pack"]["status"] == "STALE"  # superseded by the rebuild
