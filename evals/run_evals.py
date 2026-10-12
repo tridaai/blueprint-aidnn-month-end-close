@@ -216,6 +216,34 @@ opens into the exact lines it stands on. Its gates:
   naming the figure, while an FX batch edited in place
   reprices no drill: conversions stand on the stamp.
 
+An eighth act exercises **pre-close readiness** — the close
+does not start on missing sources; it says what is missing,
+by name. Its gates:
+
+- **complete passes, cited** — September corrected and
+  October complete both report READY under their derived
+  manifests, and the rebuilt September pack states COMPLETE
+  with the manifest cited on its face;
+- **failures named** — September on its opening deliveries
+  fails on exactly the three version items the derivation
+  implies; an October run staged short two extracts fails on
+  exactly those two slots;
+- **the gate and the override** — the build refuses while
+  unready, naming the items; blanket waivers and waivers
+  naming non-failing items are refused, as is a waiver for
+  a signed period; a waiver covering exactly the amended
+  expectation's short item lets October build, and the
+  pack's face and its evidence bundle carry the waiver —
+  while a waiver on record for a different item unblocks
+  nothing;
+- **the check is a pure read** — the store is byte-identical
+  across it, and the September pack signed in the act is
+  byte-identical at the end of everything. The prior
+  period's signed state is reported by the check, never
+  required — the build defines comparatives over the signed
+  record and degrades to absent by design, so there is no
+  prior-period gate to stage.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -418,6 +446,9 @@ def evaluate() -> dict:
     drill_tamper = _evaluate_drill_tamper()
     results.update(drill_tamper["results"])
 
+    readiness = _evaluate_readiness()
+    results.update(readiness["results"])
+
     first_pair_ok = (
         len(first.ic_pairs) == 1
         and first.ic_pairs[0].verdict == "ONE_SIDED"
@@ -466,6 +497,7 @@ def evaluate() -> dict:
         **governance["gates"],
         **drills["gates"],
         **drill_tamper["gates"],
+        **readiness["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -1620,6 +1652,246 @@ def main() -> int:
               "gate environment.")
     print("\nGATE:", "PASS" if results["gate_passed"] else "FAIL")
     return 0 if results["gate_passed"] else 1
+
+
+def _evaluate_readiness() -> dict:
+    """Act eight: pre-close readiness — the expectation
+    manifest, the check, the build gate, and the waiver.
+
+    The gates, in the order the act walks them:
+
+    - ``readiness: complete period passes, manifest cited`` —
+      September, fully corrected, reports READY under its
+      derived manifest and the rebuilt pack states COMPLETE
+      with the manifest cited; October, fully delivered,
+      reports READY under its own;
+    - ``readiness: missing and short items named`` —
+      September on its opening deliveries fails on exactly
+      the three version items the derivation implies (the
+      corrected extracts and the revised rate table at v2),
+      and an October run staged short two extracts fails on
+      exactly those two slots, by name;
+    - ``readiness: build refused while unready, items
+      named`` — the build for the unready September run is
+      refused with the failing items in the refusal;
+    - ``readiness: waiver refusals name their grounds`` — a
+      blanket waiver is refused, a waiver naming an item the
+      check is not failing on is refused by name, and a
+      waiver for an already-signed period is refused;
+    - ``readiness: waived build states the waiver; bundle
+      carries it`` — October, its manifest amended to expect
+      HLE's AR at v2 with only v1 delivered, builds under a
+      waiver covering exactly that item; the pack's face
+      states the waiver (item, actor, reason) and the signed
+      pack's evidence bundle carries the manifest and the
+      waiver record;
+    - ``readiness: another item's waiver does not unblock`` —
+      a waiver on record for a different item (October's CRM
+      slot) leaves the version-short build refused, naming
+      the uncovered item;
+    - ``readiness: the check is a pure read`` — the store is
+      byte-identical across a readiness check;
+    - ``readiness: signed packs byte-identical`` — the
+      September pack signed in this act is byte-identical
+      after every manifest, waiver, refusal, and October
+      build that follows.
+    """
+
+    from aidnn_close_agent import readiness as readiness_module
+    from aidnn_close_agent.datasets import (
+        PERIOD,
+        PERIOD_OCTOBER,
+        build_manifest_entries,
+        build_october_world,
+        build_world,
+    )
+    from aidnn_close_agent.errors import GateError, ReadinessError
+
+    gates: dict[str, bool] = {}
+    actor = "Eval Controller"
+    note = ("Derived from the batches the period's close "
+            "actually used.")
+    short_items = [
+        "GROUP:fx (received v1, expected v2)",
+        "HLD:gl (received v1, expected v2)",
+        "HLE:gl (received v1, expected v2)",
+    ]
+
+    def snapshot(store) -> str:
+        parts = []
+        for records in (
+            store.list_batches(), store.list_runs(),
+            store.list_packs(), store.list_bundles(),
+            store.list_manifests(), store.list_waivers(),
+            store.list_activations(), store.list_dry_runs(),
+        ):
+            parts.extend(r.model_dump_json() for r in records)
+        return "\n".join(sorted(parts))
+
+    september = build_demo_service()
+    store = september.store
+    pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
+    october = CloseService(
+        pipeline=PackPipeline(
+            engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+            checkpointer=MemorySaver()),
+        store=store, connector=september.connector,
+        objects=september.objects, pack_def=pack_v110,
+    )
+    september_world = build_world()
+    october_world = build_october_world()
+
+    september.record_manifest(
+        PERIOD, build_manifest_entries(PERIOD), actor, note)
+    october.record_manifest(
+        PERIOD_OCTOBER, build_manifest_entries(PERIOD_OCTOBER),
+        actor, note)
+
+    # September on its opening deliveries: three version
+    # items, named; the check a pure read; the build refused.
+    run_opening = september.create_run(PERIOD)
+    september.ingest(run_opening.run_id, [
+        b.batch_id for b in september_world.batches_in_phase("initial")])
+    before = snapshot(store)
+    report = september.readiness(run_opening.run_id)
+    gates["readiness: the check is a pure read"] = (
+        snapshot(store) == before)
+    september_items = sorted(i.name for i in report.items)
+    refusal = ""
+    try:
+        september.build_pack(run_opening.run_id)
+    except ReadinessError as exc:
+        refusal = str(exc)
+    gates["readiness: build refused while unready, items named"] = (
+        bool(refusal)
+        and all(name in refusal for name in short_items))
+
+    # The waiver refusals: blanket, and an item not failing.
+    blanket_refused = not_failing_refused = False
+    try:
+        september.record_waiver(PERIOD, [], actor, "just build it")
+    except GateError:
+        blanket_refused = True
+    try:
+        september.record_waiver(PERIOD, ["GROUP:crm"], actor,
+                                "the CRM extract is late")
+    except GateError:
+        not_failing_refused = True
+
+    # Waived, the opening build proceeds — and states it.
+    september.record_waiver(
+        PERIOD, short_items, actor,
+        "The v1 extracts are the period's opening position; "
+        "the corrected deliveries are confirmed in flight.")
+    blocked = september.build_pack(run_opening.run_id)
+    waived_face = (
+        blocked.status == "BLOCKED"
+        and blocked.readiness is not None
+        and blocked.readiness.status == "WAIVED"
+        and blocked.readiness.waived_items == short_items)
+
+    # The corrected deliveries land; the rebuild is complete,
+    # states it, and signs.
+    september.ingest(run_opening.run_id, [
+        b.batch_id for b in september_world.batches_in_phase("late")])
+    rebuilt = september.build_pack(run_opening.run_id)
+    september_signed = september.sign_off(
+        rebuilt.pack_id, "sign", actor)
+    september_signed_json = september.get_pack(
+        september_signed.pack_id).model_dump_json()
+
+    # A waiver for a signed period is refused — history needs
+    # no licence.
+    signed_refused = False
+    try:
+        september.record_waiver(PERIOD, short_items, actor, "too late")
+    except GateError:
+        signed_refused = True
+    gates["readiness: waiver refusals name their grounds"] = (
+        blanket_refused and not_failing_refused and signed_refused)
+
+    # October staged short two extracts names exactly those.
+    run_missing = october.create_run(PERIOD_OCTOBER)
+    october.ingest(run_missing.run_id, [
+        b.batch_id for b in october_world.batches
+        if b.batch_id not in ("O-HLE-AR-v1", "O-CRM-v1")])
+    missing_report = october.readiness(run_missing.run_id)
+    gates["readiness: missing and short items named"] = (
+        september_items == short_items
+        and sorted(i.name for i in missing_report.items)
+        == ["GROUP:crm", "HLE:ar"])
+
+    # A waiver for the CRM slot — valid against the short run,
+    # and no use at all to a different failure.
+    october.record_waiver(
+        PERIOD_OCTOBER, ["GROUP:crm"], actor,
+        "The pipeline extract is a weekly file; this month's "
+        "is confirmed in flight.")
+
+    # October complete under its manifest.
+    run_full = october.create_run(PERIOD_OCTOBER)
+    october.ingest(run_full.run_id,
+                   [b.batch_id for b in october_world.batches])
+    full_report = october.readiness(run_full.run_id)
+    gates["readiness: complete period passes, manifest cited"] = (
+        full_report.status == "READY"
+        and full_report.manifest_id == "MAN-2026-10-1"
+        and rebuilt.readiness is not None
+        and rebuilt.readiness.status == "COMPLETE"
+        and rebuilt.readiness.manifest_id == "MAN-2026-09-1")
+
+    # The manifest is amended: HLE's AR is expected at v2.
+    entries = build_manifest_entries(PERIOD_OCTOBER)
+    for entry in entries:
+        if entry.slot == "HLE:ar":
+            entry.expected_version = 2
+    october.record_manifest(
+        PERIOD_OCTOBER, entries, actor,
+        "HLE re-issues its AR extract at v2 after the "
+        "subledger fix.")
+    version_item = "HLE:ar (received v1, expected v2)"
+    refusal = ""
+    try:
+        october.build_pack(run_full.run_id)
+    except ReadinessError as exc:
+        refusal = str(exc)
+    gates["readiness: another item's waiver does not unblock"] = (
+        version_item in refusal and "GROUP:crm" not in refusal)
+
+    # Waived exactly, the build proceeds and states it; the
+    # signed pack's bundle carries the records.
+    october.record_waiver(
+        PERIOD_OCTOBER, [version_item], actor,
+        "HLE's v1 extract is the corrected subledger's own "
+        "output, re-issued under the old version by their "
+        "connector; the content is the v2 content.")
+    pack = october.build_pack(run_full.run_id)
+    face = pack.readiness
+    october.sign_off(pack.pack_id, "sign", actor)
+    october.generate_evidence(pack.pack_id)
+    data, _content_type = october.evidence_download(
+        pack.pack_id, "json")
+    document = json.loads(data)
+    section = document.get("readiness") or {}
+    statement = section.get("statement") or {}
+    gates["readiness: waived build states the waiver; bundle carries it"] = (
+        waived_face
+        and face is not None
+        and face.status == "WAIVED"
+        and face.manifest_id == "MAN-2026-10-2"
+        and face.waived_items == [version_item]
+        and len(face.waivers) == 1
+        and face.waivers[0].actor == actor
+        and statement.get("status") == "WAIVED"
+        and (section.get("manifest") or {}).get("version") == 2
+        and len(section.get("waivers") or []) == 1
+        and (section["waivers"][0]).get("items") == [version_item])
+
+    gates["readiness: signed packs byte-identical"] = (
+        september.get_pack(september_signed.pack_id).model_dump_json()
+        == september_signed_json)
+
+    return {"results": {}, "gates": gates}
 
 
 if __name__ == "__main__":

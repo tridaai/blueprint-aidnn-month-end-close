@@ -77,3 +77,13 @@ def test_eval_pack_passes():
     assert results["gates"][
         "evidence bundle cites every drill by digest"]
     assert results["evidence_drills"] == 25
+    # Round 10: pre-close readiness gates too.
+    assert results["gates"]["readiness: complete period passes, manifest cited"]
+    assert results["gates"]["readiness: missing and short items named"]
+    assert results["gates"]["readiness: build refused while unready, items named"]
+    assert results["gates"]["readiness: waiver refusals name their grounds"]
+    assert results["gates"][
+        "readiness: waived build states the waiver; bundle carries it"]
+    assert results["gates"]["readiness: another item's waiver does not unblock"]
+    assert results["gates"]["readiness: the check is a pure read"]
+    assert results["gates"]["readiness: signed packs byte-identical"]
