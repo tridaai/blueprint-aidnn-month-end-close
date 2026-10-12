@@ -38,6 +38,16 @@ service owns the close discipline the graph does not:
   never reach a signed period. Which version governs a
   period is computed from those records at run creation and
   again at build, and printed on both;
+- **pre-close readiness is governed here** — a period's
+  expectation manifest (see :mod:`.readiness`) is recorded by
+  a named controller, amended only by a new version; the
+  readiness check is a pure read over a run's received
+  sources; and the build — the one door every surface uses —
+  refuses a period whose check fails, unless a named waiver
+  on record covers the failing items exactly. A pack built
+  under a manifest states the readiness on its face:
+  complete, with the manifest version cited, or waived, with
+  the items and the waivers that covered them;
 - **the audit evidence bundle is a projection** — generated
   only for a signed pack, assembled from stored records by
   :mod:`.evidence`, checked for completeness before anything
@@ -70,6 +80,7 @@ from . import drill as drill_module
 from . import evidence as evidence_module
 from . import governance as governance_module
 from . import guardrails
+from . import readiness as readiness_module
 from .definitions import DefinitionPack, bundled_pack_dir
 from .errors import (
     BatchNotFound,
@@ -77,6 +88,7 @@ from .errors import (
     ChecklistIncomplete,
     GateError,
     PackNotFound,
+    ReadinessError,
     RunNotFound,
 )
 from .graph import PackPipeline
@@ -89,9 +101,15 @@ from .schemas import (
     DefinitionDryRun,
     Disposition,
     EvidenceBundle,
+    ExpectationManifest,
     FigureDrill,
+    ManifestEntry,
     PackActivation,
+    ReadinessReport,
+    ReadinessStatement,
+    ReadinessWaiver,
     SourceBatch,
+    WaiverCitation,
 )
 
 log = logging.getLogger(__name__)
@@ -523,6 +541,254 @@ class CloseService:
             }
         return state
 
+    # -- pre-close readiness -------------------------------------------
+
+    def record_manifest(self, period: str,
+                        entries: list[ManifestEntry], actor: str,
+                        note: str) -> ExpectationManifest:
+        """Record a named controller's expectation manifest
+        for a period: the sources its close expects, slot by
+        slot, with the delivery version expected where one is
+        stated.
+
+        Append-only, like every governance record here:
+        amending what a period expects is a new version of
+        the period's manifest naming the one it supersedes —
+        so the version that governed a check or a build stays
+        citable forever. Refusals name their grounds: an
+        unnamed author; a missing note (where the expectation
+        comes from, in the author's own words); no entries
+        (an expectation that expects nothing governs nothing);
+        a slot stated twice, or a slot that does not match
+        its own entity and kind."""
+        if not actor or not actor.strip():
+            raise GateError("a manifest must name its author")
+        if not note or not note.strip():
+            raise GateError(
+                "a manifest must carry a note — where this "
+                "expectation comes from, in the author's own "
+                "words"
+            )
+        if not entries:
+            raise GateError(
+                "a manifest with no entries expects nothing, "
+                "and an expectation that expects nothing "
+                "governs nothing — name at least one source"
+            )
+        seen: set[str] = set()
+        for entry in entries:
+            expected_slot = (
+                f"{entry.entity_id or 'GROUP'}:{entry.kind}")
+            if entry.slot != expected_slot:
+                raise GateError(
+                    f"manifest entry for {entry.kind}"
+                    f"{' ' + entry.entity_id if entry.entity_id else ''} "
+                    f"carries slot {entry.slot!r}, but its slot "
+                    f"is {expected_slot!r} — the slot is the "
+                    "identity a delivery fills, and it is "
+                    "derived, never restated"
+                )
+            if entry.slot in seen:
+                raise GateError(
+                    f"manifest names slot {entry.slot} twice — "
+                    "one expectation per slot"
+                )
+            seen.add(entry.slot)
+            if entry.expected_version is not None \
+                    and entry.expected_version < 1:
+                raise GateError(
+                    f"manifest entry {entry.slot} expects "
+                    f"version {entry.expected_version} — "
+                    "delivery versions start at 1"
+                )
+        existing = self.store.list_manifests(period)
+        supersedes = None
+        if existing:
+            supersedes = max(
+                existing, key=lambda m: m.version).manifest_id
+        record = ExpectationManifest(
+            manifest_id=f"MAN-{period}-{len(existing) + 1}",
+            period=period,
+            version=len(existing) + 1,
+            actor=actor, note=note, entries=list(entries),
+            supersedes=supersedes, at=_now(),
+        )
+        log.info(
+            "expectation manifest recorded",
+            extra={"manifest_id": record.manifest_id,
+                   "period": period, "actor": actor},
+        )
+        return self.store.save_manifest(record)
+
+    def list_manifests(self, period: str | None = None,
+                       ) -> list[ExpectationManifest]:
+        return self.store.list_manifests(period)
+
+    def readiness(self, run_id: str) -> ReadinessReport:
+        """The pre-close readiness check for a run: expected
+        vs received, computed in code (see :mod:`.readiness`).
+        A pure read — it registers nothing and mutates
+        nothing — against the manifest governing the run's
+        period (or NO_MANIFEST, stated, when none does)."""
+        run = self.get_run(run_id)
+        pack_def, _ = self.select_pack(run.period)
+        manifest = readiness_module.latest_manifest(
+            self.store, run.period)
+        return readiness_module.check_readiness(
+            self.store, run, pack_def, manifest)
+
+    def record_waiver(self, period: str, items: list[str],
+                      actor: str, reason: str) -> ReadinessWaiver:
+        """Record a named controller's waiver: this period's
+        close may be built despite these exact readiness
+        failures.
+
+        Refusals, each naming its ground: an unnamed
+        controller; a missing reason; a blanket waiver (no
+        items named — a licence covering whatever turns out
+        to be missing is not a record a controller may
+        make); a period already signed (a waiver governs a
+        close still to be built; history needs no licence);
+        no close run for the period (readiness is checked
+        against a run's received sources — there is nothing
+        to waive against); no manifest governing the period
+        (no stated expectation, so no named failure exists to
+        accept); and any item the period's current check is
+        not failing on — a waiver covers a gap the check
+        actually found, by its exact name."""
+        if not actor or not actor.strip():
+            raise GateError("a readiness waiver must name its controller")
+        if not reason or not reason.strip():
+            raise GateError(
+                "a readiness waiver must carry a reason — why "
+                "this close may start short-handed, in the "
+                "controller's own words"
+            )
+        named = list(dict.fromkeys(
+            item.strip() for item in items if item and item.strip()))
+        if not named:
+            raise GateError(
+                "a readiness waiver must name the items it "
+                "covers — a blanket waiver, covering whatever "
+                "turns out to be missing, is not a record a "
+                "controller may make"
+            )
+        signed = comparatives_module.find_signed_pack(
+            self.store, period)
+        if signed is not None:
+            raise GateError(
+                f"period {period} is already signed (pack "
+                f"{signed.pack_id}) — a waiver governs a close "
+                "still to be built; history needs no licence"
+            )
+        runs = [r for r in self.store.list_runs()
+                if r.period == period]
+        if not runs:
+            raise GateError(
+                f"no close run exists for period {period} — "
+                "readiness is checked against a run's received "
+                "sources, and there is nothing to waive against"
+            )
+        report = self.readiness(runs[-1].run_id)
+        if report.manifest_id is None:
+            raise GateError(
+                f"no manifest governs period {period} — there "
+                "is no stated expectation, so no named failure "
+                "exists for a waiver to accept"
+            )
+        failing = [item.name for item in report.items]
+        for item in named:
+            if item not in failing:
+                raise GateError(
+                    f"waiver item {item!r} is not a failing "
+                    f"item for period {period} — a waiver "
+                    "covers a gap the readiness check actually "
+                    "found, named exactly"
+                    + (f" (currently failing: "
+                       f"{', '.join(failing)})" if failing
+                       else " (readiness is currently complete "
+                            "for the period's latest run)")
+                )
+        record = ReadinessWaiver(
+            waiver_id=(
+                f"WVR-{period}-"
+                f"{len(self.store.list_waivers(period)) + 1}"),
+            period=period, items=named,
+            actor=actor, reason=reason, at=_now(),
+        )
+        log.info(
+            "readiness waiver recorded",
+            extra={"waiver_id": record.waiver_id, "period": period,
+                   "items": named, "actor": actor},
+        )
+        return self.store.save_waiver(record)
+
+    def list_waivers(self, period: str | None = None,
+                     ) -> list[ReadinessWaiver]:
+        return self.store.list_waivers(period)
+
+    def _readiness_gate(self, run: CloseRun,
+                        pack_def: DefinitionPack,
+                        ) -> ReadinessStatement | None:
+        """The build's readiness gate, at the one door every
+        surface builds through. Returns the statement the pack
+        will carry on its face, or ``None`` when no manifest
+        governs the period (the standing checklist already
+        gated the build; there is no stated expectation to
+        state). Raises :class:`ReadinessError` — naming every
+        uncovered item, in the check's own words — when the
+        check fails beyond what the period's waivers cover."""
+        manifest = readiness_module.latest_manifest(
+            self.store, run.period)
+        if manifest is None:
+            return None
+        report = readiness_module.check_readiness(
+            self.store, run, pack_def, manifest)
+        if not report.items:
+            return ReadinessStatement(
+                manifest_id=manifest.manifest_id,
+                manifest_version=manifest.version,
+                status="COMPLETE",
+                expected_count=len(manifest.entries),
+            )
+        waivers = readiness_module.waivers_for(self.store, run.period)
+        covered_by: dict[str, ReadinessWaiver] = {}
+        for waiver in waivers:
+            for name in waiver.items:
+                covered_by.setdefault(name, waiver)
+        uncovered = [item for item in report.items
+                     if item.name not in covered_by]
+        if uncovered:
+            raise ReadinessError(
+                f"run {run.run_id} cannot build a pack: "
+                f"readiness for period {run.period} under "
+                f"manifest {manifest.manifest_id} "
+                f"(v{manifest.version}) fails on "
+                + "; ".join(
+                    f"{item.name} — {item.detail}"
+                    for item in uncovered)
+                + " — the close does not start on missing "
+                  "sources: ingest them, amend the manifest, "
+                  "or record a waiver naming exactly the "
+                  "items accepted"
+            )
+        citations: list[WaiverCitation] = []
+        for waiver in waivers:
+            covered_here = [item.name for item in report.items
+                            if covered_by.get(item.name) is waiver]
+            if covered_here:
+                citations.append(WaiverCitation(
+                    waiver_id=waiver.waiver_id, actor=waiver.actor,
+                    reason=waiver.reason, items=covered_here))
+        return ReadinessStatement(
+            manifest_id=manifest.manifest_id,
+            manifest_version=manifest.version,
+            status="WAIVED",
+            expected_count=len(manifest.entries),
+            waived_items=[item.name for item in report.items],
+            waivers=citations,
+        )
+
     # -- pack build ------------------------------------------------------
 
     def build_pack(self, run_id: str) -> BoardPack:
@@ -539,6 +805,12 @@ class CloseService:
         # since the run was created (an activation landed in
         # between); the pack's own audit names it when it has.
         pack_def, activation = self.select_pack(run.period)
+        # The readiness gate: when a manifest governs the
+        # period, the check must pass — or be waived, item by
+        # exact item — before anything is computed. The
+        # statement it returns rides the build into the pack,
+        # where the verify step states it on the face.
+        readiness_statement = self._readiness_gate(run, pack_def)
         marts = build_marts(batches, pack_def)
         pack_id = f"PACK-{run.run_id}-{len(run.pack_ids) + 1}"
         # The comparative layer is prepared here, where the
@@ -556,6 +828,7 @@ class CloseService:
         self.pipeline.contexts[pack_id] = {
             "marts": marts, "batches": batches,
             "pack_def": pack_def,
+            "readiness": readiness_statement,
             "definition_change": change_statement,
             "selection_note": (
                 f"definition pack v{pack_def.version} governs "

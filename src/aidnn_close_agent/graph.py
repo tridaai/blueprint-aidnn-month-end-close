@@ -260,6 +260,46 @@ class PackPipeline:
                           f"the prior signed period",
             })
 
+        # The pre-close readiness layer: the statement the
+        # build's gate computed — the manifest that governed,
+        # and whether the close started complete or under a
+        # named waiver — is stated on the pack's face, beside
+        # the audit event that records it. The gate itself
+        # lives in the service (it refuses the build before
+        # the graph runs); what lands here is its outcome, so
+        # the signed record shows the terms the close started
+        # on.
+        readiness = context.get("readiness")
+        if readiness is not None:
+            pack.readiness = readiness
+            if readiness.status == "WAIVED":
+                detail = (
+                    f"readiness WAIVED under manifest "
+                    f"{readiness.manifest_id} "
+                    f"v{readiness.manifest_version}: the close "
+                    f"started short-handed on "
+                    f"{len(readiness.waived_items)} item(s) — "
+                    + "; ".join(readiness.waived_items)
+                    + " — covered by "
+                    + "; ".join(
+                        f"{c.waiver_id} ({c.actor}): {c.reason}"
+                        for c in readiness.waivers)
+                )
+            else:
+                detail = (
+                    f"readiness complete under manifest "
+                    f"{readiness.manifest_id} "
+                    f"v{readiness.manifest_version}: all "
+                    f"{readiness.expected_count} expected "
+                    "sources received at their expected "
+                    "versions, and the rate table covers the "
+                    "period's currencies"
+                )
+            pack.audit.append({
+                "event": "readiness_stated", "at": _now(),
+                "detail": detail,
+            })
+
         # The disposition layer: governance around the verdict,
         # consulted only after the verdict is fully computed.
         # Carried acceptances from the prior signed pack are
