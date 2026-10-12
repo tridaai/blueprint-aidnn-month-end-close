@@ -112,6 +112,15 @@ class WaiverRequest(BaseModel):
     reason: str
 
 
+class WatchAcknowledgeRequest(BaseModel):
+    period: str
+    slot: str
+    tip_batch_id: str
+    disposition: str
+    actor: str
+    reason: str
+
+
 def create_app(service: CloseService | None = None) -> FastAPI:
     load_dotenv()
     configure_json_logging()
@@ -296,6 +305,49 @@ def create_app(service: CloseService | None = None) -> FastAPI:
     @app.get("/packs/{pack_id}")
     def get_pack(pack_id: str) -> dict:
         return svc().get_pack(pack_id).model_dump()
+
+    @app.get("/packs/{pack_id}/source-watch")
+    def pack_source_watch(pack_id: str) -> dict:
+        """The period face of the source watch for one pack:
+        the movements standing behind its period, and how
+        many are OPEN. A display projection, computed on
+        read — the pack record itself is never decorated
+        (``GET /packs/{id}`` is the record, byte for byte)."""
+        pack = svc().get_pack(pack_id)
+        report = svc().source_watch(pack.period)
+        items = [i.model_dump() for i in report.items
+                 if i.pack_id == pack.pack_id]
+        return {
+            "pack_id": pack.pack_id,
+            "period": pack.period,
+            "open_count": sum(1 for i in items if i["state"] == "OPEN"),
+            "items": items,
+        }
+
+    @app.get("/source-watch")
+    def source_watch(period: str | None = None) -> dict:
+        """The post-sign-off source watch: every source that
+        moved behind a signed pack, with its derived state
+        (OPEN / ACKNOWLEDGED / ANSWERED) and the boundary
+        stated on its face. A pure read."""
+        return svc().source_watch(period).model_dump()
+
+    @app.post("/source-watch/acknowledge", status_code=201)
+    def acknowledge_source_movement(
+            request: WatchAcknowledgeRequest) -> dict:
+        """Record a named controller's answer to one source
+        movement behind a signed pack: RESTATEMENT_PLANNED
+        or NO_ACTION, covering exactly the named tip.
+        Refused (409, ground named) for an unnamed
+        controller, a missing reason, a period with no
+        signed pack, a slot that has not moved, a tip that
+        is not the chain's current tip, a movement already
+        answered through the restatement road, or one
+        already acknowledged at that tip."""
+        record = svc().acknowledge_source_movement(
+            request.period, request.slot, request.tip_batch_id,
+            request.disposition, request.actor, request.reason)
+        return record.model_dump()
 
     @app.get("/packs/{pack_id}/figures/{metric_id}/drill")
     def figure_drill(pack_id: str, metric_id: str,

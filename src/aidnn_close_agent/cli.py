@@ -183,6 +183,38 @@ def main(argv: list[str] | None = None) -> int:
     p_waiver.add_argument("--item", action="append", required=True,
                           help="one failing item's exact name; "
                                "repeat for each item covered")
+    p_watch = sub.add_parser(
+        "source-watch",
+        help="the post-sign-off source watch: every source "
+             "that moved behind a signed pack, with its "
+             "derived state (a pure read — it registers "
+             "nothing)")
+    p_watch.add_argument("--period", default=None,
+                         help="watch one period only")
+    p_watch.add_argument("--text", action="store_true",
+                         help="print the readable report instead "
+                              "of JSON")
+    p_watch_ack = sub.add_parser(
+        "acknowledge-source-movement",
+        help="record a named controller's answer to one "
+             "source movement behind a signed pack: "
+             "RESTATEMENT_PLANNED or NO_ACTION, covering "
+             "exactly the named chain tip (a movement "
+             "already answered or already acknowledged at "
+             "that tip is refused by name)")
+    p_watch_ack.add_argument("--period", required=True)
+    p_watch_ack.add_argument("--slot", required=True,
+                             help="the source slot, ENTITY:kind "
+                                  "or GROUP:kind")
+    p_watch_ack.add_argument("--tip-batch", required=True,
+                             help="the chain tip the controller "
+                                  "saw — the acknowledgement "
+                                  "covers exactly that movement")
+    p_watch_ack.add_argument("--disposition", required=True,
+                             choices=["RESTATEMENT_PLANNED",
+                                      "NO_ACTION"])
+    p_watch_ack.add_argument("--actor", required=True)
+    p_watch_ack.add_argument("--reason", required=True)
     sub.add_parser("runs", help="list all close runs as JSON")
     args = parser.parse_args(argv)
 
@@ -279,6 +311,18 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "record-waiver":
             record = service.record_waiver(
                 args.period, args.item, args.actor, args.reason)
+            print(record.model_dump_json(indent=2))
+        elif args.command == "source-watch":
+            report = service.source_watch(args.period)
+            if args.text:
+                from .sourcewatch import render_text
+                sys.stdout.write(render_text(report))
+            else:
+                print(report.model_dump_json(indent=2))
+        elif args.command == "acknowledge-source-movement":
+            record = service.acknowledge_source_movement(
+                args.period, args.slot, args.tip_batch,
+                args.disposition, args.actor, args.reason)
             print(record.model_dump_json(indent=2))
         elif args.command == "runs":
             print(json.dumps([r.model_dump() for r in service.list_runs()],

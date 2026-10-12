@@ -100,6 +100,14 @@
     <em>activation</em> then makes the version govern from a stated period, citing the
     dry-run it relied on. No activation reaches a signed period, and the version
     governing each run is selected by that rule and printed on the run.</p>
+    <h2 style="margin-top:20px;">Source watch</h2>
+    <div id="watch" class="note">Loading the source watch…</div>
+    <p class="note">A signed period's sources can still move — a corrected extract lands
+    outside any run and attaches to nothing. The watch compares every signed pack's
+    stamped sources against the tips of their supersession chains and names each
+    movement. It rebuilds, restates, and unsigns nothing: a movement is answered by a
+    controller's acknowledgement on the record, or by the restatement road the next
+    close walks. It judges movement, never materiality.</p>
     <h2 style="margin-top:20px;">What the verifier enforces</h2>
     <p class="note">Every figure in a pack is recomputed from the source extracts by an
     independent code path. A figure that cannot be reproduced blocks the pack, with the
@@ -171,9 +179,25 @@ async function loadGovernance() {
   }
 }
 
+async function loadWatch() {
+  const slot = $("watch");
+  try {
+    const w = await api("/source-watch");
+    if (!w.items.length) {
+      slot.textContent = "No signed period's sources have moved.";
+      return;
+    }
+    const marks = {OPEN: "◉ OPEN", ACKNOWLEDGED: "✓ ACKNOWLEDGED", ANSWERED: "✓ ANSWERED"};
+    slot.innerHTML = w.items.map(i => `<p class="note" style="margin-top:6px;">${marks[i.state]} · ${i.period} · ${i.slot} — signed against ${i.signed_batch_id} (v${i.signed_version}); the chain now ends at ${i.tip_batch_id} (v${i.tip_version}, landed as a ${i.landed_phase} delivery), behind signed pack ${i.pack_id}${i.acknowledged_by ? `<br>Acknowledged by ${i.acknowledged_by} (${i.disposition}): ${i.acknowledgement_reason}` : ""}${i.answered_by_pack_id ? `<br>Answered by signed pack ${i.answered_by_pack_id}, whose acknowledged restatement report names this movement.` : ""}</p>`).join("");
+  } catch (e) {
+    slot.textContent = "Source watch unavailable.";
+  }
+}
+
 async function loadRuns() {
   const runs = await api("/runs");
   loadGovernance();
+  loadWatch();
   const body = $("runs-body");
   if (!runs.length) {
     body.innerHTML = '<tr><td colspan="5" class="note">No runs yet — run the demo close.</td></tr>';
@@ -226,6 +250,18 @@ async function showRun(runId, runs) {
   document.querySelectorAll("[data-drill]").forEach(btn =>
     btn.addEventListener("click", () => loadDrill(btn.dataset.drill)));
   if (run.pack_ids) run.pack_ids.forEach(loadEvidence);
+  if (run.pack_ids) run.pack_ids.forEach(loadPackWatch);
+}
+
+async function loadPackWatch(packId) {
+  const slot = $("packwatch-" + packId);
+  if (!slot) return;
+  try {
+    const w = await api("/packs/" + packId + "/source-watch");
+    slot.outerHTML = w.open_count > 0
+      ? `<p class="flag" id="packwatch-${packId}">◉ Source watch: ${w.open_count} source movement(s) stand OPEN behind this pack's period — see the source watch panel.</p>`
+      : `<p class="note" id="packwatch-${packId}">Source watch: no open source movements behind this pack's period.</p>`;
+  } catch (e) { /* display only; its absence never blocks the view */ }
 }
 
 async function loadDrill(spec) {
@@ -292,6 +328,8 @@ function packHtml(pack) {
     <dt>Mart version</dt><dd>${pack.mart_version}</dd>
     <dt>FX table (stamped)</dt><dd>${pack.source_versions.fx_table ? "v" + pack.source_versions.fx_table.version + " · " + Object.entries(pack.source_versions.fx_table.rates).map(([c, r]) => c + " " + r).join(", ") : "v" + pack.source_versions.fx_version + " — rates not stamped (pack predates rate stamping)"}</dd>
     <dt>Source batches</dt><dd>${Object.entries(pack.source_versions.batches).map(([b, v]) => b + " (v" + v + ")").join(", ")}</dd></dl>`;
+  if (pack.status === "SIGNED_OFF")
+    html += `<div id="packwatch-${pack.pack_id}" class="note">Source watch: checking for movements behind this pack's period…</div>`;
   (pack.variances || []).forEach(v => html += `<p class="flag">✗ ${v.code} — ${v.detail}</p>`);
   html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th><th></th></tr></thead><tbody>`
     + pack.figures.map(f => `<tr><td>${f.label}</td><td>${f.entity_id || f.scope}</td>

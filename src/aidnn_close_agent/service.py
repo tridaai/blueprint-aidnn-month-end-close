@@ -69,7 +69,20 @@ service owns the close discipline the graph does not:
   at the stamped rates, and served only when the composition
   foots to the figure (``DRILL_MISMATCH`` otherwise). The
   pack's state rides the drill; blocked and stale packs drill
-  on their own stamps, like auditors do.
+  on their own stamps, like auditors do;
+- **the source watch looks back** — a signed period's
+  sources can still move: a corrected extract lands outside
+  any run and attaches to nothing. The watch (see
+  :mod:`.sourcewatch`) names every stamped source whose
+  supersession chain has since advanced, computed on read
+  from the signed packs' stamps; a named controller answers
+  an item with an acknowledgement covering exactly the tip
+  they saw — RESTATEMENT_PLANNED or NO_ACTION, reason
+  required either way — and an item whose movement later
+  goes through the restatement road reads ANSWERED, derived
+  from the answering pack's own record. The watch rebuilds,
+  restates, and unsigns nothing; recording an
+  acknowledgement writes only the acknowledgement.
 
 Nothing here posts to a ledger, files a return, or moves money:
 the signed pack is the end of the line, by design.
@@ -92,6 +105,7 @@ from . import governance as governance_module
 from . import guardrails
 from . import readiness as readiness_module
 from . import signoff_chain as chain_module
+from . import sourcewatch as watch_module
 from .definitions import DefinitionPack, bundled_pack_dir
 from .errors import (
     BatchNotFound,
@@ -121,6 +135,8 @@ from .schemas import (
     ReadinessStatement,
     ReadinessWaiver,
     SourceBatch,
+    SourceWatchAcknowledgement,
+    SourceWatchReport,
     WaiverCitation,
     Withdrawal,
 )
@@ -740,6 +756,142 @@ class CloseService:
     def list_waivers(self, period: str | None = None,
                      ) -> list[ReadinessWaiver]:
         return self.store.list_waivers(period)
+
+    # -- the post-sign-off source watch ---------------------------
+
+    def source_watch(self, period: str | None = None,
+                     ) -> SourceWatchReport:
+        """The post-sign-off source watch (see
+        :mod:`.sourcewatch`): every source that moved behind
+        a signed pack, computed in code from the signed
+        packs' stamps against the supersession chains as
+        they now stand. A pure read — it registers nothing
+        and mutates nothing."""
+        return watch_module.compute_watch(self.store, period)
+
+    def list_watch_acknowledgements(
+            self, period: str | None = None,
+            ) -> list[SourceWatchAcknowledgement]:
+        return self.store.list_watch_acknowledgements(period)
+
+    def acknowledge_source_movement(
+            self, period: str, slot: str, tip_batch_id: str,
+            disposition: str, actor: str, reason: str,
+            ) -> SourceWatchAcknowledgement:
+        """Record a named controller's answer to one source
+        movement behind a signed pack: RESTATEMENT_PLANNED
+        (a restatement will follow — the acknowledgement
+        records the intent and restates nothing itself) or
+        NO_ACTION (the controller's stated judgement that
+        this movement needs none), the reason required
+        either way.
+
+        The record covers exactly the movement it names —
+        one period, one slot, and the chain tip the
+        controller saw. Refusals, each naming its ground: an
+        unnamed controller; a missing reason; a disposition
+        that is neither of the two; a period with no signed
+        pack (the watch covers signed periods only — a close
+        still in flight finds its changed inputs at its own
+        gate); a slot the signed pack carries no source in,
+        or whose chain has not moved; a tip that is not the
+        chain's current tip (the movement was overtaken —
+        read the watch again); a movement already answered
+        through the restatement road; and a movement already
+        acknowledged at that tip, whose record stands and is
+        named. Recording writes only the acknowledgement:
+        the signed pack is history and is not touched."""
+        if not actor or not actor.strip():
+            raise GateError(
+                "a source-watch acknowledgement must name its "
+                "controller")
+        if not reason or not reason.strip():
+            raise GateError(
+                "a source-watch acknowledgement must carry a "
+                "reason — what the controller made of the "
+                "movement, in their own words")
+        if disposition not in ("RESTATEMENT_PLANNED", "NO_ACTION"):
+            raise GateError(
+                f"disposition must be RESTATEMENT_PLANNED or "
+                f"NO_ACTION, got {disposition!r} — the two "
+                "answers a controller may record for a movement")
+        pack = comparatives_module.find_signed_pack(
+            self.store, period)
+        if pack is None:
+            raise GateError(
+                f"period {period} has no signed pack — the "
+                "watch covers signed periods only; a close "
+                "still in flight finds its changed inputs at "
+                "its own gate, and there is no signed record "
+                "for an acknowledgement to answer for")
+        report = watch_module.compute_watch(self.store, period)
+        item = next((i for i in report.items if i.slot == slot),
+                    None)
+        if item is None:
+            stamped_slots = {}
+            for batch_id in pack.source_versions.batches:
+                batch = self.store.get_batch(batch_id)
+                if batch is not None:
+                    stamped_slots[slot_key(batch)] = batch_id
+            if slot not in stamped_slots:
+                raise GateError(
+                    f"signed pack {pack.pack_id} carries no "
+                    f"source in slot {slot} — its stamped "
+                    f"sources stand in: "
+                    + ", ".join(sorted(stamped_slots)))
+            raise GateError(
+                f"the {slot} source behind signed pack "
+                f"{pack.pack_id} has not moved — its chain "
+                f"still ends at {stamped_slots[slot]}, the "
+                "delivery the pack signed against, and there "
+                "is no movement to acknowledge")
+        if item.state == "ANSWERED":
+            raise GateError(
+                f"the {slot} movement behind signed pack "
+                f"{pack.pack_id} was already answered by "
+                f"signed pack {item.answered_by_pack_id}, "
+                "whose acknowledged restatement report names "
+                "it — there is nothing left to acknowledge")
+        if tip_batch_id != item.tip_batch_id:
+            raise GateError(
+                f"the acknowledgement names tip {tip_batch_id}, "
+                f"but the {slot} chain behind signed pack "
+                f"{pack.pack_id} now ends at {item.tip_batch_id} "
+                f"(v{item.tip_version}) — an acknowledgement "
+                "covers exactly the movement it saw; read the "
+                "watch again and answer the movement that "
+                "stands")
+        if item.state == "ACKNOWLEDGED":
+            standing = next(
+                a for a in self.store.list_watch_acknowledgements(
+                    period)
+                if a.slot == slot
+                and a.tip_batch_id == item.tip_batch_id)
+            raise GateError(
+                f"the {slot} movement to {item.tip_batch_id} "
+                f"was already acknowledged by {standing.actor} "
+                f"({standing.disposition}, record "
+                f"{standing.ack_id}) — that record stands; a "
+                "further answer waits for a further movement")
+        record = SourceWatchAcknowledgement(
+            ack_id=(
+                f"SWK-{period}-"
+                f"{len(self.store.list_watch_acknowledgements(period)) + 1}"),
+            period=period, pack_id=pack.pack_id, slot=slot,
+            signed_batch_id=item.signed_batch_id,
+            signed_version=item.signed_version,
+            tip_batch_id=item.tip_batch_id,
+            tip_version=item.tip_version,
+            disposition=disposition, actor=actor, reason=reason,
+            at=_now(),
+        )
+        log.info(
+            "source movement acknowledged",
+            extra={"ack_id": record.ack_id, "period": period,
+                   "slot": slot, "tip_batch_id": item.tip_batch_id,
+                   "disposition": disposition, "actor": actor},
+        )
+        return self.store.save_watch_acknowledgement(record)
 
     def _readiness_gate(self, run: CloseRun,
                         pack_def: DefinitionPack,
