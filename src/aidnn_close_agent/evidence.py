@@ -487,24 +487,25 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
     readiness_section = None
     if pack.readiness is not None:
         statement = pack.readiness
-        manifest = service.store.get_manifest(statement.manifest_id)
-        if manifest is None:
+        manifest_record = service.store.get_manifest(
+            statement.manifest_id)
+        if manifest_record is None:
             raise EvidenceError(
                 f"pack {pack.pack_id} states readiness under "
                 f"manifest {statement.manifest_id}, which does "
                 "not stand in the store — the expectation the "
                 "close ran against cannot be evidenced"
             )
-        if manifest.version != statement.manifest_version \
-                or manifest.period != pack.period:
+        if manifest_record.version != statement.manifest_version \
+                or manifest_record.period != pack.period:
             raise EvidenceError(
                 f"pack {pack.pack_id} cites manifest "
                 f"{statement.manifest_id} "
                 f"v{statement.manifest_version} for period "
                 f"{pack.period}, but the record standing under "
-                f"that id is v{manifest.version} for "
-                f"{manifest.period} — the statement and the "
-                "record disagree"
+                f"that id is v{manifest_record.version} for "
+                f"{manifest_record.period} — the statement "
+                "and the record disagree"
             )
         waiver_records = []
         for citation in statement.waivers:
@@ -531,7 +532,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             waiver_records.append(record.model_dump())
         readiness_section = {
             "statement": statement.model_dump(),
-            "manifest": manifest.model_dump(),
+            "manifest": manifest_record.model_dump(),
             "waivers": waiver_records,
         }
 
