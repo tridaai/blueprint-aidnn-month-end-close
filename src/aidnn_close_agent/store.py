@@ -1,8 +1,9 @@
 """The close store: source batches, runs, board packs, the
 evidence-bundle index, the definition-governance records
-(dry-runs and activations, migration ``0003``), and the
+(dry-runs and activations, migration ``0003``), the
 pre-close readiness records (expectation manifests and
-waivers, migration ``0004``).
+waivers, migration ``0004``), and the post-sign-off source
+watch acknowledgements (migration ``0005``).
 
 Two implementations of one small surface, because the deployment
 gets PostgreSQL and the test suite gets a double with identical
@@ -11,8 +12,8 @@ behaviour:
 - :class:`PostgresCloseStore` — the production store (JSONB
   payloads in ``source_batches`` / ``close_runs`` /
   ``board_packs`` / ``evidence_bundles`` /
-  ``definition_governance`` / ``readiness_records``;
-  migrations ``0001``–``0004``).
+  ``definition_governance`` / ``readiness_records`` /
+  ``source_watch_records``; migrations ``0001``–``0005``).
 - :class:`InMemoryCloseStore` — the double. When it is live,
   ``/readiness`` says so: nothing persists past the process.
 
@@ -36,6 +37,7 @@ from .schemas import (
     PackActivation,
     ReadinessWaiver,
     SourceBatch,
+    SourceWatchAcknowledgement,
 )
 
 
@@ -51,6 +53,7 @@ class InMemoryCloseStore:
         self._activations: dict[str, PackActivation] = {}
         self._manifests: dict[str, ExpectationManifest] = {}
         self._waivers: dict[str, ReadinessWaiver] = {}
+        self._watch_acks: dict[str, SourceWatchAcknowledgement] = {}
         self._order: list[str] = []
         self._lock = threading.Lock()
 
@@ -158,6 +161,22 @@ class InMemoryCloseStore:
     def list_waivers(self, period: str | None = None,
                      ) -> list[ReadinessWaiver]:
         records = list(self._waivers.values())
+        if period:
+            records = [r for r in records if r.period == period]
+        return records
+
+    # -- post-sign-off source watch ---------------------------
+    def save_watch_acknowledgement(
+            self, record: SourceWatchAcknowledgement,
+            ) -> SourceWatchAcknowledgement:
+        with self._lock:
+            self._watch_acks[record.ack_id] = record
+        return record
+
+    def list_watch_acknowledgements(
+            self, period: str | None = None,
+            ) -> list[SourceWatchAcknowledgement]:
+        records = list(self._watch_acks.values())
         if period:
             records = [r for r in records if r.period == period]
         return records
@@ -331,6 +350,28 @@ class PostgresCloseStore:
                               ("waiver", period))
         return self._list("readiness_records", ReadinessWaiver,
                           "kind = %s", ("waiver",))
+
+    # -- post-sign-off source watch ---------------------------
+    def save_watch_acknowledgement(
+            self, record: SourceWatchAcknowledgement,
+            ) -> SourceWatchAcknowledgement:
+        self._save("source_watch_records", "record_id", record.ack_id,
+                   record, {"kind": "acknowledgement",
+                            "period": record.period,
+                            "slot": record.slot})
+        return record
+
+    def list_watch_acknowledgements(
+            self, period: str | None = None,
+            ) -> list[SourceWatchAcknowledgement]:
+        if period:
+            return self._list(
+                "source_watch_records", SourceWatchAcknowledgement,
+                "kind = %s AND period = %s",
+                ("acknowledgement", period))
+        return self._list("source_watch_records",
+                          SourceWatchAcknowledgement,
+                          "kind = %s", ("acknowledgement",))
 
 
 def default_store() -> InMemoryCloseStore | PostgresCloseStore:
