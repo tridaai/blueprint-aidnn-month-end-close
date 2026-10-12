@@ -781,6 +781,89 @@ class ReadinessStatement(BaseModel):
     waivers: list[WaiverCitation] = Field(default_factory=list)
 
 
+class SourceWatchAcknowledgement(BaseModel):
+    """A named controller's answer to one source movement
+    behind a signed pack: the movement was seen, and either a
+    restatement is planned or no action will be taken, with
+    the reason stated either way.
+
+    The record covers exactly one movement — one period, one
+    source slot, and the chain tip the controller saw
+    (``tip_batch_id`` / ``tip_version``). It is append-only,
+    and it is not a waiver of anything: the pack it answers
+    for is history and stays history. If the chain advances
+    past the acknowledged tip, the movement re-opens as a new
+    item at the new tip — an acknowledgement covers the
+    movement it saw, never the next one sight unseen."""
+
+    ack_id: str
+    period: str
+    pack_id: str        # the signed pack the movement stands behind
+    slot: str           # ENTITY:kind / GROUP:kind (marts.slot_key)
+    signed_batch_id: str
+    signed_version: int
+    tip_batch_id: str
+    tip_version: int
+    disposition: Literal["RESTATEMENT_PLANNED", "NO_ACTION"]
+    actor: str
+    reason: str
+    at: str = ""
+
+
+class WatchItem(BaseModel):
+    """One source that moved behind a signed pack: the
+    delivery the pack signed against, the delivery that now
+    ends its supersession chain, and every delivery that
+    landed in between.
+
+    ``state`` is derived, never stored: ``ANSWERED`` when a
+    later signed pack's acknowledged restatement report
+    names this tip (the movement has been through the
+    board's own road), ``ACKNOWLEDGED`` when a
+    :class:`SourceWatchAcknowledgement` covers this exact
+    tip, else ``OPEN``. ``landed_phase`` is the newest
+    delivery's own arrival stamp — its phase, as the
+    connector recorded it. Batches carry no receipt clock:
+    a delivery outside a run is archived and stored, never
+    timestamped, so the watch names the delivery and its
+    place in the chain rather than invent a time for it."""
+
+    period: str
+    pack_id: str
+    slot: str
+    signed_batch_id: str
+    signed_version: int
+    tip_batch_id: str
+    tip_version: int
+    chain: list[str] = Field(default_factory=list)  # batch ids
+        # landed after the signed one, in chain order, tip last
+    landed_phase: str = ""
+    state: Literal["OPEN", "ACKNOWLEDGED", "ANSWERED"] = "OPEN"
+    disposition: Literal["RESTATEMENT_PLANNED", "NO_ACTION"] | None = None
+    acknowledged_by: str | None = None
+    acknowledgement_reason: str | None = None
+    answered_by_pack_id: str | None = None
+
+
+class SourceWatchReport(BaseModel):
+    """The post-sign-off source watch: every source that
+    moved behind a signed pack, computed in code from the
+    signed packs' stamps against the supersession chains as
+    they now stand.
+
+    A pure read — it registers nothing and mutates nothing —
+    and the only thing in the close that looks *backwards*
+    at periods already signed. ``boundary`` states what the
+    watch is not, on its own face: it rebuilds nothing,
+    restates nothing, unsigns nothing, and it judges
+    movement, never materiality — whether a movement matters
+    is the next build's recomputation, or a controller's
+    stated judgement on the record."""
+
+    items: list[WatchItem] = Field(default_factory=list)
+    boundary: str = ""
+
+
 class BoardPack(BaseModel):
     """The close pack: figures, variances, versions, one decision.
 
