@@ -23,6 +23,7 @@ PackStatus = Literal[
     "SIGNED_OFF",           # the controller signed; nothing posts anywhere
     "RETURNED",             # the controller sent it back, reason recorded
     "STALE",                # a source moved after this pack was built
+    "WITHDRAWN",            # the preparer took it back before the chain completed
 ]
 FigureStatus = Literal["proposed", "verified", "mismatch"]
 
@@ -185,6 +186,49 @@ class SignOff(BaseModel):
     decision: Literal["sign", "return"]
     actor: str
     reason: str = ""
+    at: str = ""
+
+
+class ChainAct(BaseModel):
+    """One act of the sign-off chain, before the controller's
+    signature: the preparer stating the pack is ready, or the
+    reviewer stating they reviewed it.
+
+    The chain runs in order — prepare, review, sign — and the
+    three acts belong to three different people (segregation:
+    no hand appears twice on one pack's chain). Each act
+    stamps the pack as it stood when the act was taken: the
+    figure and variance counts, the dispositions on the face,
+    and the readiness statement's status — so the record shows
+    what the preparer vouched for and what the reviewer
+    actually saw, not what the pack later became. The
+    controller's act is not a ChainAct: it is the pack's
+    :class:`SignOff`, exactly as it has always been — the
+    chain wraps the gate, it does not replace the signature.
+    """
+
+    role: Literal["preparer", "reviewer"]
+    actor: str
+    at: str = ""
+    note: str = ""
+    figures_count: int = 0
+    variances_count: int = 0
+    dispositions_count: int = 0
+    readiness_status: str | None = None
+
+
+class Withdrawal(BaseModel):
+    """The preparer taking a pack back before the chain
+    completes: a named act with a reason, on the pack's
+    record. The pack leaves the gate (status WITHDRAWN) and
+    the close is rebuilt instead — the withdrawn pack itself
+    is never edited back into play. After the controller's
+    signature there is no withdrawal: a signed pack is
+    immutable, and the restatement machinery is the only
+    road back."""
+
+    actor: str
+    reason: str
     at: str = ""
 
 
@@ -809,6 +853,17 @@ class BoardPack(BaseModel):
     mart_version: str = ""
     source_versions: SourceVersions = Field(default_factory=SourceVersions)
     narrative: str | None = None
+    # The sign-off chain: the preparation and review acts
+    # that preceded the controller's signature, in order
+    # (see :class:`ChainAct`), and the withdrawal that took
+    # the pack back before the chain completed, when one
+    # stands (see :class:`Withdrawal`). Empty / None on
+    # every pack that never entered the chain — including
+    # every pack signed before the chain existed, whose
+    # single signature stands as it was recorded; no chain
+    # act is ever reconstructed for one.
+    signoff_chain: list[ChainAct] = Field(default_factory=list)
+    withdrawal: Withdrawal | None = None
     decision: SignOff | None = None
     audit: list[dict[str, Any]] = Field(default_factory=list)
     created_at: str = ""

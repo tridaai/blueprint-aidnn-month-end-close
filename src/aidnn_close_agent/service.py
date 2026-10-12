@@ -15,6 +15,16 @@ service owns the close discipline the graph does not:
   ones, so the rule holds even if a marking step were missed;
 - **sign-off names its human** — anonymous decisions do not
   exist, and only an AWAITING_CONTROLLER pack can receive one;
+- **the signature is a chain's third act** — a named
+  preparer states a pack is ready and a named reviewer
+  states they reviewed it (see :mod:`.signoff_chain`)
+  before any controller signature stands, the three acts
+  belonging to three different people; the preparer may
+  withdraw the pack before the chain completes, and no one
+  may withdraw it after. The controller's act itself —
+  the decision record, the SIGNED_OFF status, the run
+  closing — is exactly what it was when signing was one
+  act: everything downstream keys on it unchanged;
 - **the comparative layer is prepared here** — the prior
   period's signed pack, its definition version, and any
   restatement of its sources are assembled at build time (see
@@ -81,6 +91,7 @@ from . import evidence as evidence_module
 from . import governance as governance_module
 from . import guardrails
 from . import readiness as readiness_module
+from . import signoff_chain as chain_module
 from .definitions import DefinitionPack, bundled_pack_dir
 from .errors import (
     BatchNotFound,
@@ -97,6 +108,7 @@ from .ports import ConnectorPort, ObjectStorePort
 from .schemas import (
     Acknowledgement,
     BoardPack,
+    ChainAct,
     CloseRun,
     DefinitionDryRun,
     Disposition,
@@ -110,6 +122,7 @@ from .schemas import (
     ReadinessWaiver,
     SourceBatch,
     WaiverCitation,
+    Withdrawal,
 )
 
 log = logging.getLogger(__name__)
@@ -252,7 +265,8 @@ class CloseService:
         the run's current batches is stale — marked in the same
         step that moved the sources, never discovered later."""
         for pack in self.store.list_packs(run_id=run.run_id):
-            if pack.status in ("SIGNED_OFF", "RETURNED", "STALE"):
+            if pack.status in ("SIGNED_OFF", "RETURNED", "STALE",
+                               "WITHDRAWN"):
                 continue
             if pack.source_versions.batches != self._current_versions(run):
                 pack.status = "STALE"
@@ -873,6 +887,174 @@ class CloseService:
 
     # -- the gate ---------------------------------------------------------
 
+    def prepare_pack(self, pack_id: str, actor: str,
+                     note: str = "") -> BoardPack:
+        """Record the chain's first act: a named preparer
+        states the pack is ready for review.
+
+        The act stamps the pack as it stands — figure and
+        variance counts, the dispositions on its face, the
+        readiness statement's status — because that is what
+        the preparer is vouching for. Preparation is only
+        possible on an AWAITING_CONTROLLER pack: the blocking
+        discipline has already bitten at verification, so a
+        blocked pack cannot even be prepared (its breaks are
+        fixed at the source, or accepted on the record and
+        the close rebuilt — the chain wraps the gate, it
+        does not soften it)."""
+        if not actor or not actor.strip():
+            raise GateError("a preparation must name its preparer")
+        pack = self.get_pack(pack_id)
+        if pack.status != "AWAITING_CONTROLLER":
+            raise GateError(
+                f"pack {pack_id} is {pack.status}; only "
+                "AWAITING_CONTROLLER packs can be prepared — a "
+                "blocked pack is fixed by fixing its sources, "
+                "or presented by accepting its breaks on the "
+                "record (a disposition per blocking variance, "
+                "then a rebuild), a stale pack by rebuilding "
+                "it, and a withdrawn or decided pack is out of "
+                "the chain for good"
+            )
+        existing = chain_module.preparer_of(pack)
+        if existing is not None:
+            raise GateError(
+                f"pack {pack_id} was already prepared by "
+                f"{existing.actor} — preparation is recorded "
+                "once; to start over, the preparer withdraws "
+                "the pack and the close is rebuilt"
+            )
+        pack.signoff_chain.append(ChainAct(
+            role="preparer", actor=actor, at=_now(), note=note,
+            **chain_module.snapshot(pack),
+        ))
+        pack.audit.append({
+            "event": "pack_prepared", "at": _now(),
+            "detail": f"prepared by {actor}",
+        })
+        pack.updated_at = _now()
+        self.store.save_pack(pack)
+        return pack
+
+    def review_pack(self, pack_id: str, actor: str,
+                    note: str) -> BoardPack:
+        """Record the chain's second act: a named reviewer —
+        never the preparer — states they reviewed the pack,
+        in their own words.
+
+        The act stamps the pack as it stands at review time:
+        the variances, dispositions, and readiness statement
+        the reviewer saw are counted on the act, so the
+        record shows what the review covered."""
+        if not actor or not actor.strip():
+            raise GateError("a review must name its reviewer")
+        if not note or not note.strip():
+            raise GateError(
+                "a review must carry a note — what was "
+                "reviewed, in the reviewer's own words"
+            )
+        pack = self.get_pack(pack_id)
+        if pack.status != "AWAITING_CONTROLLER":
+            raise GateError(
+                f"pack {pack_id} is {pack.status}; only "
+                "AWAITING_CONTROLLER packs can be reviewed"
+            )
+        preparer = chain_module.preparer_of(pack)
+        if preparer is None:
+            raise GateError(
+                f"pack {pack_id} has not been prepared — the "
+                "chain runs in order: a named preparer states "
+                "the pack is ready before a review can stand "
+                "on it"
+            )
+        existing = chain_module.reviewer_of(pack)
+        if existing is not None:
+            raise GateError(
+                f"pack {pack_id} was already reviewed by "
+                f"{existing.actor} — a review is recorded once"
+            )
+        if actor == preparer.actor:
+            raise GateError(
+                f"{actor} prepared pack {pack_id} and cannot "
+                "also review it — preparation and review are "
+                "two acts by two people, or the chain is one "
+                "person talking to themselves"
+            )
+        pack.signoff_chain.append(ChainAct(
+            role="reviewer", actor=actor, at=_now(), note=note,
+            **chain_module.snapshot(pack),
+        ))
+        pack.audit.append({
+            "event": "pack_reviewed", "at": _now(),
+            "detail": f"reviewed by {actor}: {note}",
+        })
+        pack.updated_at = _now()
+        self.store.save_pack(pack)
+        return pack
+
+    def withdraw_pack(self, pack_id: str, actor: str,
+                      reason: str) -> BoardPack:
+        """Record the preparer taking a pack back before the
+        chain completes: a named act with a reason, on the
+        pack's record.
+
+        The pack leaves the gate as WITHDRAWN; the close is
+        rebuilt instead, and the withdrawn pack is never
+        edited back into play. Only the preparer who prepared
+        it can withdraw it — the act undoes their own
+        statement of readiness, nobody else's. After the
+        controller's signature there is no withdrawal at all:
+        a signed pack is immutable, and a restated period is
+        corrected by the restatement machinery, not by
+        taking history back."""
+        if not actor or not actor.strip():
+            raise GateError("a withdrawal must name its preparer")
+        if not reason or not reason.strip():
+            raise GateError(
+                "a withdrawal must carry a reason — why the "
+                "pack is being taken back, in the preparer's "
+                "own words"
+            )
+        pack = self.get_pack(pack_id)
+        if pack.status == "SIGNED_OFF":
+            raise GateError(
+                f"pack {pack_id} is signed; a signed pack "
+                "cannot be withdrawn — the signature stands, "
+                "and a period that must be corrected is "
+                "corrected by the restatement machinery, not "
+                "by withdrawing history"
+            )
+        if pack.status != "AWAITING_CONTROLLER":
+            raise GateError(
+                f"pack {pack_id} is {pack.status}; only a "
+                "pack standing at the gate can be withdrawn"
+            )
+        preparer = chain_module.preparer_of(pack)
+        if preparer is None:
+            raise GateError(
+                f"pack {pack_id} has not been prepared — "
+                "there is no statement of readiness to take "
+                "back; a pack nobody has taken up is simply "
+                "left, and a rebuild supersedes it"
+            )
+        if actor != preparer.actor:
+            raise GateError(
+                f"pack {pack_id} was prepared by "
+                f"{preparer.actor}; only its preparer can "
+                "withdraw it — the withdrawal undoes their "
+                "own statement of readiness"
+            )
+        pack.withdrawal = Withdrawal(actor=actor, reason=reason,
+                                     at=_now())
+        pack.status = "WITHDRAWN"
+        pack.audit.append({
+            "event": "pack_withdrawn", "at": _now(),
+            "detail": f"withdrawn by {actor}: {reason}",
+        })
+        pack.updated_at = _now()
+        self.store.save_pack(pack)
+        return pack
+
     def sign_off(self, pack_id: str, decision: str, actor: str,
                  reason: str = "") -> BoardPack:
         if decision not in ("sign", "return"):
@@ -903,6 +1085,36 @@ class CloseService:
                 "must acknowledge the restatement on the record before "
                 "this pack can be signed — the signed prior pack is "
                 "not changed by acknowledging, and neither is this one"
+            )
+        # The chain gate: the signature is the chain's third
+        # act, and it is refused until the first two stand —
+        # and refused to either earlier hand. Every refusal
+        # above keeps its own ground and its own order; the
+        # chain is the last gate the signature passes.
+        preparer = chain_module.preparer_of(pack)
+        if preparer is None:
+            raise GateError(
+                f"pack {pack_id} has not been prepared — a "
+                "signature is the third act of a chain: a "
+                "named preparer states the pack is ready, a "
+                "named reviewer states they reviewed it, and "
+                "only then does a controller sign"
+            )
+        reviewer = chain_module.reviewer_of(pack)
+        if reviewer is None:
+            raise GateError(
+                f"pack {pack_id} was prepared by "
+                f"{preparer.actor} but has not been reviewed "
+                "— the chain runs in order: preparation, "
+                "review, signature"
+            )
+        if actor in (preparer.actor, reviewer.actor):
+            raise GateError(
+                f"{actor} already stands on pack {pack_id}'s "
+                f"chain as its {preparer.role if actor == preparer.actor else reviewer.role} "
+                "and cannot also sign it — preparation, "
+                "review, and signature are three acts by "
+                "three different people"
             )
         config = {"configurable": {"thread_id": pack_id}}
         self.pipeline.graph.invoke(

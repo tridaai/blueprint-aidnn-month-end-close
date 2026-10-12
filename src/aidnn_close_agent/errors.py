@@ -19,8 +19,10 @@ them to honest HTTP responses instead of stack traces:
   no waiver on record covering the failing items exactly. The
   refusal names every uncovered item, in the words a waiver
   must use.
-- :class:`GateError` — a sign-off the pack's state does not
-  allow (blocked, stale, already signed, or anonymous).
+- :class:`GateError` — a sign-off (or a sign-off chain act)
+  the pack's state does not allow (blocked, stale, already
+  signed, anonymous, out of chain order, or a hand already
+  standing on the chain).
 - :class:`EvidenceError` — an audit evidence bundle that
   cannot be honestly generated: the pack is not signed, or a
   completeness check finds a gap (a figure without its
