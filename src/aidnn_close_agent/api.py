@@ -53,6 +53,21 @@ class SignOffRequest(BaseModel):
     reason: str = ""
 
 
+class PrepareRequest(BaseModel):
+    actor: str
+    note: str = ""
+
+
+class ReviewRequest(BaseModel):
+    actor: str
+    note: str
+
+
+class WithdrawRequest(BaseModel):
+    actor: str
+    reason: str
+
+
 class ReceiveSourceRequest(BaseModel):
     batch_id: str
 
@@ -296,8 +311,49 @@ def create_app(service: CloseService | None = None) -> FastAPI:
         drill."""
         return svc().figure_drill(pack_id, metric_id, entity).model_dump()
 
+    @app.post("/packs/{pack_id}/prepare")
+    def prepare_pack(pack_id: str, request: PrepareRequest) -> dict:
+        """Record the sign-off chain's first act: a named
+        preparer states the pack is ready for review.
+        Refused (409, ground named) for an unnamed preparer,
+        a pack that is not AWAITING_CONTROLLER (a blocked
+        pack cannot even be prepared), or a pack already
+        prepared."""
+        pack = svc().prepare_pack(pack_id, request.actor,
+                                  request.note)
+        return pack.model_dump()
+
+    @app.post("/packs/{pack_id}/review")
+    def review_pack(pack_id: str, request: ReviewRequest) -> dict:
+        """Record the sign-off chain's second act: a named
+        reviewer — never the preparer — states they reviewed
+        the pack, in their own words. Refused (409, ground
+        named) for an unnamed reviewer, a missing note, an
+        unprepared pack, a pack already reviewed, or the
+        preparer's own hand."""
+        pack = svc().review_pack(pack_id, request.actor,
+                                 request.note)
+        return pack.model_dump()
+
+    @app.post("/packs/{pack_id}/withdraw")
+    def withdraw_pack(pack_id: str, request: WithdrawRequest) -> dict:
+        """Record the preparer taking a pack back before the
+        chain completes. Refused (409, ground named) for an
+        unnamed preparer, a missing reason, a hand other
+        than the preparer's, an unprepared pack, or a pack
+        already signed — a signed pack cannot be withdrawn."""
+        pack = svc().withdraw_pack(pack_id, request.actor,
+                                   request.reason)
+        return pack.model_dump()
+
     @app.post("/packs/{pack_id}/sign-off")
     def sign_off(pack_id: str, request: SignOffRequest) -> dict:
+        """The chain's third act: the controller's signature.
+        Refused (409, ground named) until a preparation and a
+        review stand on the pack, and refused to either
+        earlier hand — as well as on every ground the gate
+        has always named (blocked, stale, unacknowledged
+        restatement, anonymous)."""
         pack = svc().sign_off(pack_id, request.decision, request.actor,
                               request.reason)
         return pack.model_dump()

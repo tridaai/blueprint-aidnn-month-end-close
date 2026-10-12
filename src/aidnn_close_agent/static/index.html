@@ -215,6 +215,8 @@ async function showRun(runId, runs) {
   $("detail").innerHTML = html;
   document.querySelectorAll("[data-sign]").forEach(btn =>
     btn.addEventListener("click", () => decide(btn.dataset.sign, btn.dataset.pack)));
+  document.querySelectorAll("[data-chain]").forEach(btn =>
+    btn.addEventListener("click", () => chainAct(btn.dataset.chain, btn.dataset.pack)));
   document.querySelectorAll("[data-ack]").forEach(btn =>
     btn.addEventListener("click", () => ackRestatement(btn.dataset.ack)));
   document.querySelectorAll("[data-evidence]").forEach(btn =>
@@ -307,6 +309,7 @@ function packHtml(pack) {
   html += readinessHtml(pack);
   if (pack.narrative)
     html += `<h2 style="margin-top:14px;">Narrative — verified figures only</h2><div class="narrative">${pack.narrative}</div>`;
+  html += chainHtml(pack);
   if (pack.decision)
     html += `<p class="note" style="margin-top:10px;">Controller: ${pack.decision.decision} by ${pack.decision.actor}${pack.decision.reason ? " — " + pack.decision.reason : ""}</p>`;
   if (pack.status === "SIGNED_OFF") {
@@ -320,13 +323,52 @@ function packHtml(pack) {
   }
   if (pack.status === "AWAITING_CONTROLLER") {
     html += `<div style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
-      <input id="actor-${pack.pack_id}" placeholder="Controller name (required)">
-      <input id="reason-${pack.pack_id}" placeholder="Reason (optional)">
+      <input id="actor-${pack.pack_id}" placeholder="Your name (required)">
+      <input id="reason-${pack.pack_id}" placeholder="Note / reason">
+      <button class="secondary" data-chain="prepare" data-pack="${pack.pack_id}">Prepare</button>
+      <button class="secondary" data-chain="review" data-pack="${pack.pack_id}">Review</button>
       <button data-sign="sign" data-pack="${pack.pack_id}">Sign off</button>
-      <button class="secondary" data-sign="return" data-pack="${pack.pack_id}">Return</button></div>
+      <button class="secondary" data-sign="return" data-pack="${pack.pack_id}">Return</button>
+      <button class="secondary" data-chain="withdraw" data-pack="${pack.pack_id}">Withdraw</button></div>
+      <p class="note">The signature is a chain's third act: a named preparer states the pack is ready, a named reviewer (never the preparer) states they reviewed it, and only then does a third person sign. The preparer may withdraw the pack before the chain completes; nobody may after.</p>
       <p class="note" id="gate-error-${pack.pack_id}"></p>`;
   }
   return html;
+}
+
+function chainHtml(pack) {
+  const chain = pack.signoff_chain || [];
+  let html = "";
+  if (pack.withdrawal)
+    html += `<p class="flag" style="margin-top:10px;">Withdrawn by ${pack.withdrawal.actor} — ${pack.withdrawal.reason}</p>`;
+  if (!chain.length) return html;
+  html += `<h2 style="margin-top:16px;">Sign-off chain</h2>
+    <p class="note">Preparation, review, signature: three acts by three different people, in order. Each act stamps the pack as it stood — what the preparer vouched for is what the reviewer saw.</p>`;
+  chain.forEach(a => {
+    html += `<p class="note" style="margin-left:14px;">${a.role}: ${a.actor} — ${a.figures_count} figures, ${a.variances_count} variances, ${a.dispositions_count} dispositions on the face, readiness ${a.readiness_status || "not governed"}${a.note ? " — " + a.note : ""}</p>`;
+  });
+  return html;
+}
+
+async function chainAct(kind, packId) {
+  const actor = $("actor-" + packId).value;
+  const text = $("reason-" + packId).value;
+  const body = kind === "prepare" ? {actor, note: text}
+    : kind === "review" ? {actor, note: text}
+    : {actor, reason: text};
+  try {
+    await api(`/packs/${packId}/${kind}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    await loadRuns();
+    const runs = await api("/runs");
+    const run = runs.find(r => r.pack_ids.includes(packId));
+    if (run) await showRun(run.run_id, runs);
+  } catch (e) {
+    const slot = $("gate-error-" + packId);
+    if (slot) slot.textContent = e.message;
+  }
 }
 
 function icPairsHtml(pack) {

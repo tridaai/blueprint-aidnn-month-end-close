@@ -82,6 +82,24 @@ from .service import CloseService
 from .store import InMemoryCloseStore
 
 CONTROLLER = "Mara Ellison (Group Controller)"
+PREPARER = "Priya Nair (Senior Accountant)"
+REVIEWER = "Jonas Weber (Reporting Manager)"
+
+
+def _sign_via_chain(service, pack, reason: str = ""):
+    """Walk a pack through the sign-off chain — preparation,
+    review, signature, three acts by three people — and
+    return the signed pack, printing the chain as it forms."""
+    service.prepare_pack(pack.pack_id, PREPARER,
+                         "figures tied out; the pack is ready")
+    print(f"  chain · preparer: {PREPARER} states {pack.pack_id} "
+          "is ready")
+    service.review_pack(
+        pack.pack_id, REVIEWER,
+        "reviewed the variances, the dispositions on the face, "
+        "and the readiness statement")
+    print(f"  chain · reviewer: {REVIEWER} states they reviewed it")
+    return service.sign_off(pack.pack_id, "sign", CONTROLLER, reason)
 
 
 def build_demo_service() -> CloseService:
@@ -147,8 +165,9 @@ def run_demo() -> CloseService:
         print("\nNarrative (from verified figures only):")
         for line in second.narrative.splitlines():
             print(f"  {line}")
-    signed = service.sign_off(second.pack_id, "sign", CONTROLLER,
-                               "figures verified; variances cleared")
+    print("\nThe signature is a chain, not a click:")
+    signed = _sign_via_chain(service, second,
+                             "figures verified; variances cleared")
     print(f"\n{signed.pack_id} → {signed.status} by {CONTROLLER}.")
     print("Nothing was posted to any ledger. The signed pack is the record.")
     _print_evidence(service, signed)
@@ -268,9 +287,9 @@ def _run_october(september_service: CloseService) -> CloseService:
     )
     print(f"Restatement acknowledged by {CONTROLLER} — the variance "
           "stays on the pack record.")
-    signed = service.sign_off(acked.pack_id, "sign", CONTROLLER,
-                              "comparatives tie to the signed September "
-                              "pack; restatement acknowledged")
+    signed = _sign_via_chain(service, acked,
+                             "comparatives tie to the signed September "
+                             "pack; restatement acknowledged")
     print(f"{signed.pack_id} → {signed.status}. September's signed pack "
           "is byte-for-byte the record it was.")
     record = service.generate_evidence(signed.pack_id)
@@ -360,8 +379,8 @@ def _run_disposition_act() -> None:
         print(f"  ✓ {disposition.disposition_id} · "
               f"{disposition.code} · {disposition.decision} by "
               f"{disposition.actor} — {disposition.reason}")
-    signed = service.sign_off(
-        presented.pack_id, "sign", CONTROLLER,
+    signed = _sign_via_chain(
+        service, presented,
         "figures verified; the intercompany break is accepted "
         "on the record and carried to November")
     print(f"\n{signed.pack_id} → {signed.status}. The signed "
@@ -474,9 +493,9 @@ def _run_governance_act(october_service: CloseService) -> None:
               f"dry-run behind it found {change.moved_count} "
               f"figures moved, {change.added_count} added, "
               f"{change.dropped_count} dropped.")
-    signed = november.sign_off(pack.pack_id, "sign", CONTROLLER,
-                                "first close under v1.2.0; the "
-                                "change is governed and stated")
+    signed = _sign_via_chain(november, pack,
+                             "first close under v1.2.0; the "
+                             "change is governed and stated")
     print(f"{signed.pack_id} → {signed.status}.")
     record = november.generate_evidence(signed.pack_id)
     data, _ = november.evidence_download(signed.pack_id, "json")

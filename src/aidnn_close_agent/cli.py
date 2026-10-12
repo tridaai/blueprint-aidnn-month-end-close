@@ -52,6 +52,29 @@ def main(argv: list[str] | None = None) -> int:
     p_sign.add_argument("decision", choices=["sign", "return"])
     p_sign.add_argument("--actor", required=True)
     p_sign.add_argument("--reason", default="")
+    p_prepare = sub.add_parser(
+        "prepare-pack",
+        help="record the sign-off chain's first act: a named "
+             "preparer states the pack is ready for review")
+    p_prepare.add_argument("pack_id")
+    p_prepare.add_argument("--actor", required=True)
+    p_prepare.add_argument("--note", default="")
+    p_review = sub.add_parser(
+        "review-pack",
+        help="record the sign-off chain's second act: a named "
+             "reviewer (never the preparer) states they "
+             "reviewed the pack")
+    p_review.add_argument("pack_id")
+    p_review.add_argument("--actor", required=True)
+    p_review.add_argument("--note", required=True)
+    p_withdraw = sub.add_parser(
+        "withdraw-pack",
+        help="record the preparer taking a pack back before "
+             "the chain completes; a signed pack cannot be "
+             "withdrawn")
+    p_withdraw.add_argument("pack_id")
+    p_withdraw.add_argument("--actor", required=True)
+    p_withdraw.add_argument("--reason", required=True)
     p_receive = sub.add_parser(
         "receive-restatement",
         help="take delivery of a restated extract for a signed period")
@@ -176,6 +199,18 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "sign-off":
             pack = service.sign_off(args.pack_id, args.decision, args.actor,
                                     args.reason)
+            print(pack.model_dump_json(indent=2))
+        elif args.command == "prepare-pack":
+            pack = service.prepare_pack(args.pack_id, args.actor,
+                                        args.note)
+            print(pack.model_dump_json(indent=2))
+        elif args.command == "review-pack":
+            pack = service.review_pack(args.pack_id, args.actor,
+                                       args.note)
+            print(pack.model_dump_json(indent=2))
+        elif args.command == "withdraw-pack":
+            pack = service.withdraw_pack(args.pack_id, args.actor,
+                                         args.reason)
             print(pack.model_dump_json(indent=2))
         elif args.command == "receive-restatement":
             batch = service.receive_restatement(args.batch_id)

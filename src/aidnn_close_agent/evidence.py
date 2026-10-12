@@ -135,6 +135,21 @@ quotes, or generation refuses with the gap named. A pack
 built for a period no manifest governed projects
 ``readiness: null`` — the close ran under the standing
 checklist alone, and there is nothing to cite.
+
+The sign-off chain (round 11) joins inside ``sign_off`` as
+``chain``: the preparation and review acts that preceded
+the signature — who prepared, who reviewed, what each act
+stamped (the counts and readiness status the pack wore at
+that moment) — so an auditor reads the whole chain of
+hands, not just the last one. When a chain stands on the
+pack, generation checks it whole before anything is
+written: one preparation, one review, in order, by hands
+all different from each other and from the controller's —
+a signed pack whose chain is broken is a gap in the
+sign-off evidence, named like every other gap here. A pack
+signed before the chain existed projects ``chain: null``:
+its single signature stands as it was recorded, and no
+preparation or review is reconstructed for it.
 """
 
 from __future__ import annotations
@@ -145,6 +160,7 @@ from pathlib import Path
 from . import dispositions as dispositions_module
 from . import drill as drill_module
 from . import guardrails
+from . import signoff_chain as chain_module
 from .definitions import (
     DefinitionPack,
     bundled_pack_dir,
@@ -414,6 +430,13 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             "pack should never present it"
         )
 
+    # The sign-off chain, when one stands on the pack, must
+    # be whole: one preparation, one review, in order, three
+    # different hands. A chain that is present but broken is
+    # a gap in the sign-off evidence; a chain that is absent
+    # is a legacy signature, stated as absence below.
+    chain_module.check_bundle_chain(pack)
+
     # Every acceptance on the signed pack's face must answer
     # for a variance on the pack: an acceptance covering
     # nothing would be decoration on the record, and the
@@ -553,6 +576,8 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             "actor": pack.decision.actor,
             "reason": pack.decision.reason,
             "at": pack.decision.at,
+            "chain": [act.model_dump() for act in pack.signoff_chain]
+            if pack.signoff_chain else None,
             "run_id": run.run_id,
             "run_status": run.status,
             "checklist": run.checklist,
@@ -637,6 +662,25 @@ def render_text(document: dict) -> str:
         f"at {sign_off['at']}"
         + (f" — {sign_off['reason']}" if sign_off["reason"] else "")
     )
+    chain = sign_off.get("chain")
+    if chain:
+        for act in chain:
+            lines.append(
+                f"  chain · {act['role']}: {act['actor']} at "
+                f"{act['at']} — {act['figures_count']} figures, "
+                f"{act['variances_count']} variances, "
+                f"{act['dispositions_count']} dispositions on the "
+                f"face, readiness "
+                f"{act['readiness_status'] or 'not governed'}"
+                + (f" — {act['note']}" if act["note"] else "")
+            )
+    else:
+        lines.append(
+            "  chain: none on record — this pack was signed "
+            "under the single-act sign-off, before the sign-off "
+            "chain existed; no preparation or review stands on "
+            "its record, and none is reconstructed"
+        )
     lines.append(
         f"Run {sign_off['run_id']} closed at signing; checklist "
         "complete (no missing sources):"
