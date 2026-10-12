@@ -569,6 +569,174 @@ class DefinitionChange(BaseModel):
     material_count: int
 
 
+class ManifestEntry(BaseModel):
+    """One source a period's close expects, as governed data.
+
+    The expectation is keyed on the batch slot — ``ENTITY:kind``
+    for an entity source, ``GROUP:kind`` for a group source —
+    the same identity the run's checklist uses
+    (:func:`aidnn_close_agent.marts.slot_key`), because that is
+    the slot a delivery fills. ``expected_version`` states the
+    delivery version the close was set up to consume, when the
+    manifest states one: batch versions are per-batch content
+    stamps — a delivery *is* a specific version — so a received
+    batch at any other version is a different delivery, named
+    short (below) or ahead (above) against the expectation.
+    ``expected_batch_id`` is the provenance: the delivery the
+    expectation was taken from, where it was taken from one."""
+
+    slot: str
+    kind: SourceKind
+    entity_id: str | None = None
+    expected_version: int | None = None
+    expected_batch_id: str | None = None
+
+
+class ExpectationManifest(BaseModel):
+    """A named controller's statement of what one period's
+    close expects to receive, recorded before the close runs.
+
+    A manifest is a record, not a configuration file: it names
+    its author and carries the note that says where the
+    expectation comes from, and it is append-only — amending
+    what a period expects is a *new version* of the period's
+    manifest whose ``supersedes`` names the one it replaces,
+    never an edit. The version that governed a readiness check
+    or a build is citable by id, exactly like the dry-run an
+    activation cites."""
+
+    manifest_id: str
+    period: str
+    version: int  # per-period sequence: 1, 2, ...
+    actor: str
+    note: str
+    entries: list[ManifestEntry] = Field(default_factory=list)
+    supersedes: str | None = None  # manifest_id replaced, if any
+    at: str = ""
+
+
+class ReadinessWaiver(BaseModel):
+    """A named controller's licence to build one period's
+    close short-handed: the readiness check failed, and these
+    exact items are accepted as missing.
+
+    The items are named in the check's own words — a slot for
+    a missing source, a slot with both versions for a version
+    mismatch, a currency for a missing rate — because a waiver
+    that names nothing in particular covers nothing in
+    particular: a blanket waiver is refused at recording, and
+    an item the check is not currently failing on is refused
+    by name. Coverage is re-derived at build time, so a waiver
+    recorded against one failure does not silently stretch to
+    a different one. Append-only, like every governance
+    record here; there is no un-waive, only the record."""
+
+    waiver_id: str
+    period: str
+    items: list[str] = Field(default_factory=list)
+    actor: str
+    reason: str
+    at: str = ""
+
+
+class ReadinessItem(BaseModel):
+    """One thing a readiness check found wanting, named the
+    way a waiver must name it to cover it. ``name`` is the
+    item's identity — detail included, on the disposition
+    precedent: a version shortfall at v1 against v2 is a
+    different item from the same slot short at v1 against v3,
+    and an acceptance written for one does not cover the
+    other."""
+
+    name: str
+    slot: str
+    detail: str
+
+
+class ReadinessEntry(BaseModel):
+    """One manifest entry, checked: what was expected, what
+    stands received, and the verdict. ``state`` is ``ok``,
+    ``missing`` (the slot never filled), ``short`` (received
+    below the expected version), or ``ahead`` (received above
+    it — a delivery the manifest predates; the remedy is to
+    amend the manifest, not to pretend it fits)."""
+
+    slot: str
+    kind: SourceKind
+    entity_id: str | None = None
+    expected_version: int | None = None
+    expected_batch_id: str | None = None
+    received_batch_id: str | None = None
+    received_version: int | None = None
+    state: Literal["ok", "missing", "short", "ahead"]
+
+
+class ReadinessReport(BaseModel):
+    """The pre-close readiness check for one run, computed in
+    code from the run's received sources against the period's
+    governing manifest.
+
+    The report is a pure read — it registers nothing and
+    mutates nothing — and it speaks in names: every failing
+    item is listed individually, in the words a waiver must
+    use. ``status`` is ``READY`` (nothing failing),
+    ``NOT_READY`` (items failing), or ``NO_MANIFEST`` (no
+    manifest governs the period: there is no stated
+    expectation to check against, and the report says so
+    rather than inventing one — the standing checklist still
+    gates the build). The prior period's state rides the
+    report as information — ``SIGNED`` with the pack cited,
+    ``NO_PRIOR_CLOSE`` (nothing on record: a first close),
+    or ``PRIOR_UNSIGNED`` (packs exist, none signed) — never
+    as a failure: the build requires nothing of the prior
+    period, because comparatives are defined over the signed
+    record and degrade to absent by design, and readiness
+    enforces exactly what the build requires, no more."""
+
+    period: str
+    run_id: str
+    manifest_id: str | None = None
+    manifest_version: int | None = None
+    status: Literal["READY", "NOT_READY", "NO_MANIFEST"]
+    entries: list[ReadinessEntry] = Field(default_factory=list)
+    items: list[ReadinessItem] = Field(default_factory=list)
+    prior_period: str = ""
+    prior_state: Literal["SIGNED", "NO_PRIOR_CLOSE", "PRIOR_UNSIGNED"] = \
+        "NO_PRIOR_CLOSE"
+    prior_pack_id: str | None = None
+
+
+class WaiverCitation(BaseModel):
+    """One waiver's contribution to a pack built under it:
+    the items it covered at build time, with the actor and
+    the reason quoted from the record — the pack's face
+    states who allowed the close to start short-handed and
+    why, without a reader having to chase the record."""
+
+    waiver_id: str
+    actor: str
+    reason: str
+    items: list[str] = Field(default_factory=list)
+
+
+class ReadinessStatement(BaseModel):
+    """The readiness a pack was built under, stated on its
+    face: the manifest that governed (id + version — the
+    version is citable), and whether the close started
+    complete or waived. A waived build lists the items it
+    started without and cites the waivers that covered them.
+    ``None`` on a pack whose period no manifest governed —
+    the close ran under the standing checklist alone, and the
+    absence reads as absence, like every layer before it."""
+
+    manifest_id: str
+    manifest_version: int
+    status: Literal["COMPLETE", "WAIVED"]
+    expected_count: int  # manifest entries the check ran over
+    waived_items: list[str] = Field(default_factory=list)
+    waivers: list[WaiverCitation] = Field(default_factory=list)
+
+
 class BoardPack(BaseModel):
     """The close pack: figures, variances, versions, one decision.
 
@@ -629,6 +797,13 @@ class BoardPack(BaseModel):
     # a close under the version its predecessor signed under
     # has no change to state.
     definition_change: DefinitionChange | None = None
+    # The pre-close readiness layer: the manifest that
+    # governed this build and whether the close started
+    # complete or under a named waiver (see
+    # :class:`ReadinessStatement`). None on packs built for
+    # periods no manifest governed, and on every pack built
+    # before the layer existed.
+    readiness: ReadinessStatement | None = None
     definition_pack_id: str = ""
     definition_pack_version: str = ""
     mart_version: str = ""

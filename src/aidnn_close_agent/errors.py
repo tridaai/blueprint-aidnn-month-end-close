@@ -12,6 +12,13 @@ them to honest HTTP responses instead of stack traces:
 - :class:`ChecklistIncomplete` — a pack build was attempted
   before every required source for the period was ingested. The
   close checklist is a state machine, not a suggestion.
+- :class:`ReadinessError` — a pack build was attempted for a
+  period whose pre-close readiness check fails against the
+  governing expectation manifest (a source missing, a delivery
+  at the wrong version, a rate the table does not carry) with
+  no waiver on record covering the failing items exactly. The
+  refusal names every uncovered item, in the words a waiver
+  must use.
 - :class:`GateError` — a sign-off the pack's state does not
   allow (blocked, stale, already signed, or anonymous).
 - :class:`EvidenceError` — an audit evidence bundle that
@@ -51,6 +58,12 @@ class EngineUnavailable(CloseError):
 
 class ChecklistIncomplete(CloseError):
     """The close checklist forbids this step in the run's state."""
+
+    status_code = 409
+
+
+class ReadinessError(CloseError):
+    """The pre-close readiness check forbids this build."""
 
     status_code = 409
 

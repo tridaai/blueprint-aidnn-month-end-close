@@ -1,6 +1,8 @@
 """The close store: source batches, runs, board packs, the
-evidence-bundle index, and the definition-governance records
-(dry-runs and activations, migration ``0003``).
+evidence-bundle index, the definition-governance records
+(dry-runs and activations, migration ``0003``), and the
+pre-close readiness records (expectation manifests and
+waivers, migration ``0004``).
 
 Two implementations of one small surface, because the deployment
 gets PostgreSQL and the test suite gets a double with identical
@@ -9,7 +11,8 @@ behaviour:
 - :class:`PostgresCloseStore` — the production store (JSONB
   payloads in ``source_batches`` / ``close_runs`` /
   ``board_packs`` / ``evidence_bundles`` /
-  ``definition_governance``; migrations ``0001``–``0003``).
+  ``definition_governance`` / ``readiness_records``;
+  migrations ``0001``–``0004``).
 - :class:`InMemoryCloseStore` — the double. When it is live,
   ``/readiness`` says so: nothing persists past the process.
 
@@ -29,7 +32,9 @@ from .schemas import (
     CloseRun,
     DefinitionDryRun,
     EvidenceBundle,
+    ExpectationManifest,
     PackActivation,
+    ReadinessWaiver,
     SourceBatch,
 )
 
@@ -44,6 +49,8 @@ class InMemoryCloseStore:
         self._bundles: dict[str, EvidenceBundle] = {}
         self._dry_runs: dict[str, DefinitionDryRun] = {}
         self._activations: dict[str, PackActivation] = {}
+        self._manifests: dict[str, ExpectationManifest] = {}
+        self._waivers: dict[str, ReadinessWaiver] = {}
         self._order: list[str] = []
         self._lock = threading.Lock()
 
@@ -122,6 +129,38 @@ class InMemoryCloseStore:
 
     def list_activations(self) -> list[PackActivation]:
         return list(self._activations.values())
+
+    # -- pre-close readiness -------------------------------------
+    def save_manifest(self, record: ExpectationManifest,
+                      ) -> ExpectationManifest:
+        with self._lock:
+            self._manifests[record.manifest_id] = record
+        return record
+
+    def get_manifest(self, manifest_id: str) -> ExpectationManifest | None:
+        return self._manifests.get(manifest_id)
+
+    def list_manifests(self, period: str | None = None,
+                       ) -> list[ExpectationManifest]:
+        records = list(self._manifests.values())
+        if period:
+            records = [r for r in records if r.period == period]
+        return records
+
+    def save_waiver(self, record: ReadinessWaiver) -> ReadinessWaiver:
+        with self._lock:
+            self._waivers[record.waiver_id] = record
+        return record
+
+    def get_waiver(self, waiver_id: str) -> ReadinessWaiver | None:
+        return self._waivers.get(waiver_id)
+
+    def list_waivers(self, period: str | None = None,
+                     ) -> list[ReadinessWaiver]:
+        records = list(self._waivers.values())
+        if period:
+            records = [r for r in records if r.period == period]
+        return records
 
 
 class PostgresCloseStore:
@@ -254,6 +293,44 @@ class PostgresCloseStore:
     def list_activations(self) -> list[PackActivation]:
         return self._list("definition_governance", PackActivation,
                           "kind = %s", ("activation",))
+
+    # -- pre-close readiness -------------------------------------
+    def save_manifest(self, record: ExpectationManifest,
+                      ) -> ExpectationManifest:
+        self._save("readiness_records", "record_id", record.manifest_id,
+                   record, {"kind": "manifest", "period": record.period})
+        return record
+
+    def get_manifest(self, manifest_id: str) -> ExpectationManifest | None:
+        return self._get("readiness_records", "record_id", manifest_id,
+                         ExpectationManifest)
+
+    def list_manifests(self, period: str | None = None,
+                       ) -> list[ExpectationManifest]:
+        if period:
+            return self._list("readiness_records", ExpectationManifest,
+                              "kind = %s AND period = %s",
+                              ("manifest", period))
+        return self._list("readiness_records", ExpectationManifest,
+                          "kind = %s", ("manifest",))
+
+    def save_waiver(self, record: ReadinessWaiver) -> ReadinessWaiver:
+        self._save("readiness_records", "record_id", record.waiver_id,
+                   record, {"kind": "waiver", "period": record.period})
+        return record
+
+    def get_waiver(self, waiver_id: str) -> ReadinessWaiver | None:
+        return self._get("readiness_records", "record_id", waiver_id,
+                         ReadinessWaiver)
+
+    def list_waivers(self, period: str | None = None,
+                     ) -> list[ReadinessWaiver]:
+        if period:
+            return self._list("readiness_records", ReadinessWaiver,
+                              "kind = %s AND period = %s",
+                              ("waiver", period))
+        return self._list("readiness_records", ReadinessWaiver,
+                          "kind = %s", ("waiver",))
 
 
 def default_store() -> InMemoryCloseStore | PostgresCloseStore:
