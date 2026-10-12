@@ -52,3 +52,28 @@ def test_eval_pack_passes():
         "governance: first governed pack states the change"]
     assert results["gates"][
         "governance: bundle carries the activation and the dry-run"]
+    # Round 9: figure drill-down gates too.
+    assert results["gates"][
+        "drill: every september figure foots to its lines"]
+    assert results["gates"][
+        "drill: base figure lines are the planted lines"]
+    assert results["gates"][
+        "drill: elimination shows both legs at the stamp"]
+    assert results["gates"][
+        "drill: converted figure converts once per entity at the stamp"]
+    assert results["gates"][
+        "drill: derived figures compose, on no lines of their own"]
+    assert results["gates"][
+        "drill: blocked and stale packs drill on their own stamps"]
+    assert results["gates"][
+        "drill: tampered source line raises DRILL_MISMATCH "
+        "naming the figure"]
+    assert results["gates"][
+        "drill: edited rate table reprices no drill (the stamp "
+        "is the basis)"]
+    assert results["gates"]["drill: october figures foot to their lines"]
+    assert results["gates"][
+        "drill: october bundle cites every drill by digest"]
+    assert results["gates"][
+        "evidence bundle cites every drill by digest"]
+    assert results["evidence_drills"] == 25

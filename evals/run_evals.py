@@ -193,6 +193,29 @@ charge of November. Its gates:
   its digest; September's bundle, from a close with no
   change to state, projects ``definition_change: null``.
 
+A seventh act exercises **figure drill-down** — every figure
+opens into the exact lines it stands on. Its gates:
+
+- **every figure re-performs** — all 25 figures on both
+  signed packs drill from their stamped sources and compose
+  to the recorded values exactly, and the bundles cite each
+  drill by a digest a fresh drill reproduces;
+- **the lines are the planted lines** — September's external
+  revenue for HLE is exactly the two corrected-extract lines;
+  the elimination shows both legs with the EUR leg converted
+  at the stamped 1.10; the converted figure converts once per
+  entity at the stamp; derived figures compose from their
+  operands' drills and stand on no lines of their own, with
+  the plan shown as authored data;
+- **state is no barrier, and no excuse** — the blocked first
+  pack drills with the duplicate journal counted once, and
+  the stale pack drills on its own v1 stamps after the world
+  moved;
+- **the identity bites** — on a fresh store, a source line
+  edited under a signed pack's stamps raises DRILL_MISMATCH
+  naming the figure, while an FX batch edited in place
+  reprices no drill: conversions stand on the stamp.
+
 A live-engine run (EVAL_LIVE=1, FINANCE_ENGINE=aidnn with a
 workspace configured) is reported, never gated — it measures
 the deployment's engine, not this code.
@@ -212,6 +235,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 from aidnn_close_agent.connectors import DatasetConnector  # noqa: E402
+from aidnn_close_agent import drill as drill_module  # noqa: E402
 from aidnn_close_agent import verifier as verifier_module  # noqa: E402
 from aidnn_close_agent.datasets import (  # noqa: E402
     DEFINITION_CHANGED_METRICS,
@@ -238,7 +262,11 @@ from aidnn_close_agent.definitions import (  # noqa: E402
 )
 from aidnn_close_agent.demo import build_demo_service  # noqa: E402
 from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
-from aidnn_close_agent.errors import EvidenceError, GateError  # noqa: E402
+from aidnn_close_agent.errors import (  # noqa: E402
+    DrillMismatch,
+    EvidenceError,
+    GateError,
+)
 from aidnn_close_agent.fx import D, RateTable  # noqa: E402
 from aidnn_close_agent.graph import PackPipeline  # noqa: E402
 from aidnn_close_agent.object_store import InMemoryObjectStore  # noqa: E402
@@ -274,6 +302,10 @@ def evaluate() -> dict:
     except GateError:
         blocked_refused = True
 
+    # -- act seven staging: the blocked pack's drill, taken
+    # while it stands blocked (the stale drill follows below) --
+    blocked_drill = service.figure_drill(first.pack_id, "opex", "HLD")
+
     # -- gate: no evidence bundle for an unsigned close ----------------
     # Attempted now, while the first pack stands BLOCKED: an
     # auditor bundle for it would be a false artifact.
@@ -288,6 +320,7 @@ def evaluate() -> dict:
                    [b.batch_id for b in world.batches_in_phase("late")])
     first_after = service.get_pack(first.pack_id)
     stale_gate = first_after.status == "STALE"
+    stale_drill = service.figure_drill(first_after.pack_id, "opex", "HLE")
 
     second = service.build_pack(run.run_id)
     figures = _figures(second)
@@ -378,6 +411,13 @@ def evaluate() -> dict:
     governance = _evaluate_governance()
     results.update(governance["results"])
 
+    drills = _evaluate_drills(service, signed, blocked_drill,
+                              stale_drill)
+    results.update(drills["results"])
+
+    drill_tamper = _evaluate_drill_tamper()
+    results.update(drill_tamper["results"])
+
     first_pair_ok = (
         len(first.ic_pairs) == 1
         and first.ic_pairs[0].verdict == "ONE_SIDED"
@@ -416,12 +456,16 @@ def evaluate() -> dict:
         "ic agreed pair silent on the signed pack": signed_pair_ok,
         "evidence bundle carries the ic pairs":
             evidence["gates"]["ic_pairs"],
+        "evidence bundle cites every drill by digest":
+            evidence["gates"]["drills"],
         "rate table stamped on the signed pack": stamp_gate,
         **october["gates"],
         **ic_variant["gates"],
         **rate_checks["gates"],
         **dispositions["gates"],
         **governance["gates"],
+        **drills["gates"],
+        **drill_tamper["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -432,12 +476,34 @@ def _evaluate_evidence(service, signed) -> dict:
     complete, digest-true, and byte-identical on regeneration."""
     out: dict = {"results": {}, "gates": {
         "complete": False, "byte_identical": False,
-        "digest_matches": False, "ic_pairs": False}}
+        "digest_matches": False, "ic_pairs": False,
+        "drills": False}}
     if signed is None:
         return out
     record = service.generate_evidence(signed.pack_id)
     data, _ = service.evidence_download(signed.pack_id, "json")
     document = json.loads(data)
+
+    drill_entries = document.get("drills") or []
+    fresh = {
+        (e["metric_id"], e["entity_id"]): service.figure_drill(
+            signed.pack_id, e["metric_id"], e["entity_id"])
+        for e in drill_entries
+    }
+    out["gates"]["drills"] = (
+        len(drill_entries) == 25
+        and all(not e["mismatch"] for e in drill_entries)
+        and all(
+            e["digest"] == drill_module.drill_digest(
+                fresh[(e["metric_id"], e["entity_id"])])
+            and e["composed_total"]
+            == fresh[(e["metric_id"], e["entity_id"])].composed_total
+            and e["line_count"]
+            == fresh[(e["metric_id"], e["entity_id"])].line_count
+            for e in drill_entries
+        )
+    )
+    out["results"]["evidence_drills"] = len(drill_entries)
 
     pack_figures = {(f.metric_id, f.entity_id): f for f in signed.figures}
     figures_ok = len(document["figures"]) == len(pack_figures) == 25 \
@@ -513,6 +579,8 @@ def _evaluate_october(september_service, signed_september) -> dict:
             "rate changes flagged exactly": False,
             "flux states both rate tables": False,
             "october bundle carries rate provenance": False,
+            "drill: october figures foot to their lines": False,
+            "drill: october bundle cites every drill by digest": False,
         }
         return out
 
@@ -745,6 +813,33 @@ def _evaluate_october(september_service, signed_september) -> dict:
                  "current_rate": "1.12"}]
         )
     out["gates"]["october bundle carries rate provenance"] = fx_bundle_ok
+
+    # -- act seven: October's figures drill too --------------------
+    october_drills_ok = False
+    october_bundle_drills_ok = False
+    if signed_october is not None:
+        october_drills_ok = all(
+            service.figure_drill(
+                signed_october.pack_id, f.metric_id, f.entity_id
+            ).composed_total == f.value
+            for f in signed_october.figures
+        )
+        entries = october_doc.get("drills") or []
+        october_bundle_drills_ok = (
+            len(entries) == 25
+            and all(not e["mismatch"] for e in entries)
+            and all(
+                e["digest"] == drill_module.drill_digest(
+                    service.figure_drill(
+                        signed_october.pack_id, e["metric_id"],
+                        e["entity_id"]))
+                for e in entries
+            )
+        )
+    out["gates"]["drill: october figures foot to their lines"] = \
+        october_drills_ok
+    out["gates"]["drill: october bundle cites every drill by digest"] = \
+        october_bundle_drills_ok
     out["results"]["october_status"] = pack.status
     return out
 
@@ -1325,6 +1420,186 @@ def _evaluate_governance() -> dict:
             json.loads(sept_data)["definition_change"] is None
     gates["governance: bundle carries the activation and the dry-run"] = \
         bundle_ok and september_bundle_ok
+    return out
+
+
+def _evaluate_drills(service, signed, blocked_drill,
+                     stale_drill) -> dict:
+    """Act seven (September side): every figure on the signed
+    pack re-performs to its lines; the planted compositions
+    are checked by kind; the blocked and stale drills —
+    computed in the main flow, while those packs stood in
+    those states — foot on their own stamps."""
+    out: dict = {"results": {}, "gates": {}}
+    if signed is None:
+        out["gates"] = {
+            "drill: every september figure foots to its lines":
+                False,
+            "drill: base figure lines are the planted lines":
+                False,
+            "drill: elimination shows both legs at the stamp":
+                False,
+            "drill: converted figure converts once per entity "
+            "at the stamp": False,
+            "drill: derived figures compose, on no lines of "
+            "their own": False,
+            "drill: blocked and stale packs drill on their "
+            "own stamps": False,
+        }
+        return out
+
+    out["gates"]["drill: every september figure foots to its lines"] = \
+        all(
+            service.figure_drill(
+                signed.pack_id, f.metric_id, f.entity_id
+            ).composed_total == f.value
+            for f in signed.figures
+        )
+
+    base = service.figure_drill(
+        signed.pack_id, "revenue_external", "HLE")
+    out["gates"]["drill: base figure lines are the planted lines"] = (
+        [(l.batch_id, l.batch_version, l.journal_id, l.account,
+          l.amount) for l in base.root.lines]
+        == [("B-HLE-GL-v2", 2, "J-E2", "4000", "520000.00"),
+            ("B-HLE-GL-v2", 2, "J-E3", "4100", "95000.00")]
+        and base.composed_total == "615000.00"
+    )
+
+    elim = service.figure_drill(signed.pack_id, "eliminations_total")
+    revenue_leg, cost_leg = elim.root.children
+    cost_entity = cost_leg.children[0]
+    out["gates"]["drill: elimination shows both legs at the stamp"] = (
+        elim.composed_total == "55000.00"
+        and revenue_leg.value == cost_leg.value == "55000.00"
+        and cost_entity.pre_conversion_value == "50000.00"
+        and cost_entity.rate == "1.10"
+        and cost_entity.value == "55000.00"
+    )
+
+    converted = service.figure_drill(
+        signed.pack_id, "consolidated_revenue")
+    hle = next(c for c in converted.root.children
+               if c.entity_id == "HLE")
+    out["gates"]["drill: converted figure converts once per entity "
+               "at the stamp"] = (
+        converted.root.kind == "sum_converted"
+        and hle.pre_conversion_value == "615000.00"
+        and hle.rate == "1.10"
+        and hle.value == "676500.00"
+        and converted.composed_total == "1796500.00"
+    )
+
+    income = service.figure_drill(
+        signed.pack_id, "consolidated_operating_income")
+    vs_plan = service.figure_drill(signed.pack_id, "revenue_vs_plan")
+    plan_node = vs_plan.root.children[1]
+    out["gates"]["drill: derived figures compose, on no lines of "
+               "their own"] = (
+        income.root.lines == [] and income.root.records == []
+        and [c.sign for c in income.root.children] == [1, -1, -1]
+        and income.composed_total == "783250.00"
+        and plan_node.kind == "plan"
+        and plan_node.value == "-1750000.00"
+        and plan_node.lines == []
+        and vs_plan.composed_total == "46500.00"
+    )
+
+    out["gates"]["drill: blocked and stale packs drill on their "
+               "own stamps"] = (
+        blocked_drill.pack_status == "BLOCKED"
+        and blocked_drill.composed_total
+        == blocked_drill.figure_value == "133250.00"
+        and sum(1 for l in blocked_drill.root.lines
+                if l.journal_id == "J-D9") == 1
+        and stale_drill.pack_status == "STALE"
+        and stale_drill.composed_total
+        == stale_drill.figure_value == "195000.00"
+        and {l.batch_id for l in stale_drill.root.lines}
+        == {"B-HLE-GL-v1"}
+        and stale_drill.fx_version == 1
+    )
+    out["results"]["drill_signed_line_counts"] = {
+        f.metric_id + (f"@{f.entity_id}" if f.entity_id else ""):
+            service.figure_drill(
+                signed.pack_id, f.metric_id, f.entity_id).line_count
+        for f in signed.figures
+    }
+    return out
+
+
+def _evaluate_drill_tamper() -> dict:
+    """Act seven (the identity): September closes and signs on
+    a fresh store; then a source line is edited under the
+    signed pack's stamps, and an FX batch is edited in place.
+    The first must raise DRILL_MISMATCH naming the figure;
+    the second must reprice nothing — the drill converts at
+    the stamp, like the verifier."""
+    out: dict = {"results": {}, "gates": {
+        "drill: tampered source line raises DRILL_MISMATCH "
+        "naming the figure": False,
+        "drill: edited rate table reprices no drill (the "
+        "stamp is the basis)": False,
+    }}
+
+    def _signed_september():
+        service = build_demo_service()
+        world = build_world()
+        run = service.create_run(PERIOD)
+        service.ingest(
+            run.run_id,
+            [b.batch_id for b in world.batches_in_phase("initial")])
+        service.build_pack(run.run_id)
+        service.ingest(
+            run.run_id,
+            [b.batch_id for b in world.batches_in_phase("late")])
+        second = service.build_pack(run.run_id)
+        return service, service.sign_off(
+            second.pack_id, "sign", "Eval Controller")
+
+    service, signed = _signed_september()
+    batch = service.store.get_batch("B-HLE-GL-v2")
+    journals = []
+    for journal in batch.journals:
+        if journal.journal_id == "J-E2":
+            journal = journal.model_copy(update={"lines": [
+                line.model_copy(update={"credit": "521000.00"})
+                if line.account == "4000" else line
+                for line in journal.lines
+            ]})
+        journals.append(journal)
+    service.store.save_batch(batch.model_copy(
+        update={"journals": journals}))
+    try:
+        service.figure_drill(signed.pack_id, "revenue_external", "HLE")
+        mismatch = None
+    except DrillMismatch as exc:
+        mismatch = exc
+    out["gates"][
+        "drill: tampered source line raises DRILL_MISMATCH "
+        "naming the figure"] = (
+        mismatch is not None
+        and "DRILL_MISMATCH" in str(mismatch)
+        and "revenue_external" in str(mismatch)
+        and mismatch.composed_total == "616000.00"
+        and mismatch.figure_value == "615000.00"
+    )
+    out["results"]["drill_mismatch"] = (
+        str(mismatch) if mismatch is not None else None)
+
+    service, signed = _signed_september()
+    fx_batch = service.store.get_batch("B-FX-v2")
+    service.store.save_batch(fx_batch.model_copy(update={
+        "rate_table": fx_batch.rate_table.model_copy(
+            update={"rates": {"EUR": "1.15"}}),
+    }))
+    drill = service.figure_drill(signed.pack_id, "consolidated_revenue")
+    out["gates"][
+        "drill: edited rate table reprices no drill (the "
+        "stamp is the basis)"] = (
+        drill.composed_total == "1796500.00"
+        and drill.fx_version == 2
+    )
     return out
 
 

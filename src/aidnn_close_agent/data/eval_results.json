@@ -27,9 +27,10 @@
       "EUR": "1.10"
     }
   },
+  "evidence_drills": 25,
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "b4a7769044da90ec78595d43bfe943d9ab706797f751357598313ad4a173bee8",
+  "evidence_sha256": "1c1d44a4f0f3671e19f4f9c679880f28b9fb0620bc9f2d00f0a86a78bbb97705",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -82,7 +83,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "b3a8229035be87ab887cd1274ba1e24be1db96d5f0c6f3c60285371e1ad3899f",
+  "october_evidence_sha256": "cb107d4139953c9cece63840ba2bea947ae90e900411ce84c4dc14fac9b91074",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -131,7 +132,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T23:42:25.064484+00:00",
+      "at": "2026-10-12T00:15:14.477918+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -150,7 +151,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T23:42:25.069848+00:00",
+      "at": "2026-10-12T00:15:14.484022+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -203,7 +204,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-11T23:42:25.104776+00:00",
+      "at": "2026-10-12T00:15:14.531793+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -222,7 +223,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-11T23:42:25.104820+00:00",
+      "at": "2026-10-12T00:15:14.531844+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -322,7 +323,7 @@
       "baseline_discrepancies": []
     },
     "digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
-    "computed_at": "2026-10-11T23:42:25.192549+00:00"
+    "computed_at": "2026-10-12T00:15:14.616210+00:00"
   },
   "governance_activation": {
     "activation_id": "ACT-harborlight-close-1",
@@ -334,10 +335,38 @@
     "dry_run_digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
     "actor": "Eval Controller",
     "reason": "Insurance premiums are reported to the board on their own line from November; they leave operating expenses and stand separately. Measured first, per the dry-run.",
-    "at": "2026-10-11T23:42:25.198085+00:00",
+    "at": "2026-10-12T00:15:14.622577+00:00",
     "supersedes": null
   },
   "governance_november_pack": "PACK-RUN-2026-11-1",
+  "drill_signed_line_counts": {
+    "revenue_external@HLG": 1,
+    "revenue_external@HLD": 2,
+    "revenue_external@HLE": 2,
+    "revenue_ic@HLG": 0,
+    "revenue_ic@HLD": 1,
+    "revenue_ic@HLE": 0,
+    "cogs_external@HLG": 0,
+    "cogs_external@HLD": 1,
+    "cogs_external@HLE": 1,
+    "opex@HLG": 2,
+    "opex@HLD": 4,
+    "opex@HLE": 2,
+    "cash@HLG": 3,
+    "cash@HLD": 6,
+    "cash@HLE": 4,
+    "pipeline_open": 3,
+    "consolidated_revenue": 5,
+    "consolidated_ic_revenue": 1,
+    "consolidated_gross_revenue": 6,
+    "eliminations_total": 2,
+    "consolidated_cogs": 2,
+    "consolidated_opex": 8,
+    "consolidated_operating_income": 15,
+    "consolidated_cash": 13,
+    "revenue_vs_plan": 5
+  },
+  "drill_mismatch": "DRILL_MISMATCH: figure revenue_external for HLE on pack PACK-RUN-2026-09-2: the lines in the pack's stamped sources compose to 616000.00 EUR, but the pack records 615000.00 \u2014 the drill refuses to present a composition that does not foot to the figure. A source record has moved under the pack's stamps, or the figure was not produced from them",
   "ic_signed_pair": {
     "elimination_id": "ic_sales",
     "seller_id": "HLD",
@@ -370,6 +399,7 @@
     "ic one-sided pair named in the first attempt": true,
     "ic agreed pair silent on the signed pack": true,
     "evidence bundle carries the ic pairs": true,
+    "evidence bundle cites every drill by digest": true,
     "rate table stamped on the signed pack": true,
     "october gold figures exact": true,
     "ic pair agrees in october": true,
@@ -388,6 +418,8 @@
     "restated bundle carries the flux schedule": true,
     "october bundle carries the ic pairs": true,
     "october bundle carries rate provenance": true,
+    "drill: october figures foot to their lines": true,
+    "drill: october bundle cites every drill by digest": true,
     "ic disagreement blocks with both figures": true,
     "ic pair record equals the planted gold": true,
     "ic flags mark exactly the consolidated figures on the pair": true,
@@ -407,7 +439,15 @@
     "governance: activation refusals name their grounds": true,
     "governance: next period selects the activated version": true,
     "governance: first governed pack states the change": true,
-    "governance: bundle carries the activation and the dry-run": true
+    "governance: bundle carries the activation and the dry-run": true,
+    "drill: every september figure foots to its lines": true,
+    "drill: base figure lines are the planted lines": true,
+    "drill: elimination shows both legs at the stamp": true,
+    "drill: converted figure converts once per entity at the stamp": true,
+    "drill: derived figures compose, on no lines of their own": true,
+    "drill: blocked and stale packs drill on their own stamps": true,
+    "drill: tampered source line raises DRILL_MISMATCH naming the figure": true,
+    "drill: edited rate table reprices no drill (the stamp is the basis)": true
   },
   "gate_passed": true
 }
