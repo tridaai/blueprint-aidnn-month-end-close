@@ -296,6 +296,22 @@ def _run_october(september_service: CloseService) -> CloseService:
     print(f"Its evidence bundle {record.bundle_id} carries the "
           f"comparatives, the restatement, and the acknowledgement: "
           f"{record.figure_count} figures, sha256 {record.sha256}")
+    watch = service.source_watch()
+    print("\nThe source watch, looking back at the signed periods:")
+    for item in watch.items:
+        print(f"  {item.period} · {item.slot} — signed against "
+              f"{item.signed_batch_id} (v{item.signed_version}); the "
+              f"chain now ends at {item.tip_batch_id} "
+              f"(v{item.tip_version}): {item.state}"
+              + (f", answered by signed pack "
+                 f"{item.answered_by_pack_id}" if item.answered_by_pack_id
+                 else ""))
+    print("The movement went through the restatement road — "
+          "recomputed, named on October's pack, acknowledged before "
+          "its signature — so the watch reads it answered. Until "
+          "October built, the same movement would have stood OPEN: "
+          "the watch is what speaks for a signed period in the "
+          "meantime.")
     return service
 
 

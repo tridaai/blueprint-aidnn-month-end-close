@@ -659,6 +659,61 @@ def restatement_batch() -> SourceBatch:
                   "restatement", journals=journals)
 
 
+SECOND_RESTATEMENT_BATCH_ID = "B-HLG-GL-v3"
+
+
+def second_restatement_batch() -> SourceBatch:
+    """September, restated again: the first correction was
+    itself wrong — the head-office payroll accrual's final
+    figure is 53,500, not 52,000. This delivery supersedes
+    B-HLG-GL-v2, so the HLG chain advances a second time
+    behind the signed pack: the movement a watch
+    acknowledgement of the v2 tip cannot cover, because an
+    acknowledgement covers exactly the movement it saw."""
+    journals = []
+    for journal in _hlg_journals():
+        if journal.journal_id == "J-H3":
+            journal = _journal(
+                "J-H3", "HLG",
+                [_line("6100", debit="53500.00"),
+                 _line("1000", credit="53500.00")],
+                memo="Head-office payroll — RESTATED AGAIN: the "
+                     "first correction (52,000) was itself "
+                     "understated; final accrual 53,500",
+            )
+        journals.append(journal)
+    return _batch(SECOND_RESTATEMENT_BATCH_ID, "gl", "HLG", 3,
+                  RESTATEMENT_BATCH_ID, "restatement",
+                  journals=journals)
+
+
+MEMO_RESTATEMENT_BATCH_ID = "B-HLE-GL-v3"
+
+
+def memo_restatement_batch() -> SourceBatch:
+    """September's HLE extract, re-delivered with one journal
+    memo corrected and every amount exactly as booked. The
+    chain behind the signed pack advances — the watch must
+    name the movement, because movement is all it judges —
+    and whether it matters is a controller's judgement to
+    state on the record (a NO_ACTION acknowledgement), not
+    the watch's to make."""
+    journals = []
+    for journal in _hle_journals(corrected=True):
+        if journal.journal_id == "J-E6":
+            journal = _journal(
+                "J-E6", "HLE",
+                [_line("6200", debit="12000.00"),
+                 _line("1000", credit="12000.00")],
+                memo="Rent — memo corrected: the landlord "
+                     "reference was missing from the original "
+                     "extract; amounts as booked",
+            )
+        journals.append(journal)
+    return _batch(MEMO_RESTATEMENT_BATCH_ID, "gl", "HLE", 3,
+                  "B-HLE-GL-v2", "restatement", journals=journals)
+
+
 # What the restated September sources produce, under the pack
 # version that signed September (v1.0.0) — gold for the eval's
 # restatement gate, keyed like the other gold dicts.

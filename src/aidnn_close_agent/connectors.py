@@ -18,7 +18,13 @@ hash — survives independently of the run records.
 
 from __future__ import annotations
 
-from .datasets import build_october_world, build_world, restatement_batch
+from .datasets import (
+    build_october_world,
+    build_world,
+    memo_restatement_batch,
+    restatement_batch,
+    second_restatement_batch,
+)
 from .errors import BatchNotFound
 from .schemas import SourceBatch
 
@@ -26,7 +32,9 @@ from .schemas import SourceBatch
 class DatasetConnector:
     """The bundled connector: the synthetic Harborlight extracts
     — September's close, October's close, and the restated
-    September extract that arrives after September signed."""
+    September extracts that arrive after September signed
+    (the payroll correction, its own correction, and the
+    memo-only HLE re-delivery)."""
 
     name = "dataset"
 
@@ -35,7 +43,8 @@ class DatasetConnector:
         batches = (
             list(self._world.batches)
             + list(build_october_world().batches)
-            + [restatement_batch()]
+            + [restatement_batch(), second_restatement_batch(),
+               memo_restatement_batch()]
         )
         self._by_id = {b.batch_id: b for b in batches}
 
