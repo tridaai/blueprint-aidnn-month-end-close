@@ -640,6 +640,118 @@ class BoardPack(BaseModel):
     updated_at: str = ""
 
 
+class DrillLine(BaseModel):
+    """One source journal line inside a figure drill: the exact
+    line, in the exact batch the pack stamps, with its signed
+    contribution to the figure stated in the entity's currency.
+
+    The line carries no converted amount of its own, on
+    purpose: the close converts an entity *subtotal* once, at
+    the stamped rate (the conversion lives on the drill node
+    whose subtotal it is), so a per-line converted figure would
+    be a precision the close never computed. What a line does
+    carry is everything needed to find it again in the raw
+    extract: batch and version, journal, its position within
+    the journal, account, both stated amounts, and the
+    intercompany flag."""
+
+    entity_id: str
+    batch_id: str
+    batch_version: int
+    journal_id: str
+    journal_date: str = ""
+    line_index: int  # the line's position within its journal
+    account: str
+    debit: str   # as stated in the extract, entity currency
+    credit: str  # as stated in the extract, entity currency
+    ic_counterparty: str | None = None
+    memo: str = ""
+    amount: str  # the line's signed contribution, entity currency
+    currency: str  # the entity's currency
+
+
+class DrillRecord(BaseModel):
+    """One source record inside a drill for a figure that does
+    not stand on journal lines — a CRM opportunity, today.
+    Same discipline as :class:`DrillLine`: the record as
+    stated, its batch and version, and its contribution."""
+
+    batch_id: str
+    batch_version: int
+    name: str
+    stage: str = ""
+    amount: str  # the record's contribution, in ``currency``
+    currency: str
+
+
+class DrillNode(BaseModel):
+    """One level of a figure drill: a value and what it stands
+    on — source lines, source records, or child nodes.
+
+    A **base** node's value is the sum of its own lines (or
+    records). A derived node carries no lines of its own —
+    ever: its value is the composition of its children under
+    the definition's operator, and the drill shows the
+    operands' drills instead of fabricating a line set.
+    ``sign`` is how the node enters its parent (``-1`` for a
+    subtracted operand; a plan child carries its negative
+    value directly, with sign ``1``). On a converted child,
+    ``pre_conversion_value`` is the entity subtotal in the
+    entity's currency and ``rate`` the stamped rate that was
+    applied to it — once, to the subtotal, never per line."""
+
+    metric_id: str
+    label: str = ""
+    entity_id: str | None = None
+    kind: Literal[
+        "base", "sum_converted", "add", "subtract", "vs_plan",
+        "elimination", "leg", "plan",
+    ]
+    currency: str
+    value: str  # Decimal as string — this node's composed total
+    sign: int = 1
+    rate: str | None = None
+    pre_conversion_value: str | None = None
+    pre_conversion_currency: str | None = None
+    lines: list[DrillLine] = Field(default_factory=list)
+    records: list[DrillRecord] = Field(default_factory=list)
+    children: list["DrillNode"] = Field(default_factory=list)
+    note: str = ""
+
+
+class FigureDrill(BaseModel):
+    """One figure, opened: the composition the pack's stamped
+    sources produce for it, computed by re-performance.
+
+    The drill is a recomputation, not a report over stored
+    numbers: it walks the exact batches the pack stamps (at
+    their stamped versions) and the rate table the pack stamps,
+    with its own aggregation, and it is served only when the
+    composition foots to the figure on the pack record,
+    Decimal-exact — otherwise the request fails with
+    ``DRILL_MISMATCH`` naming both totals. ``pack_status``
+    rides the drill because auditors drill blocked and stale
+    packs too: the drill is a true statement about the pack's
+    own stamped sources, with the pack's state named on it.
+    The drill carries no timestamp, so it is byte-deterministic
+    and digestible (see :func:`aidnn_close_agent.drill.drill_digest`)."""
+
+    pack_id: str
+    period: str
+    pack_status: PackStatus
+    metric_id: str
+    entity_id: str | None = None
+    label: str
+    figure_value: str  # the value on the pack record
+    currency: str
+    composed_total: str  # the drill's own composition
+    line_count: int  # source lines + records across the tree
+    definition_pack_version: str = ""
+    fx_version: int = 0  # the rate table the conversions stand on
+    fx_basis: str = ""   # where that table came from, in words
+    root: DrillNode
+
+
 class EvidenceBundle(BaseModel):
     """The record of one generated audit evidence bundle.
 

@@ -42,7 +42,14 @@ service owns the close discipline the graph does not:
   only for a signed pack, assembled from stored records by
   :mod:`.evidence`, checked for completeness before anything
   is written, and stored in the object store under a digest
-  the bundle record carries.
+  the bundle record carries;
+- **figure drill-down is a re-performance** — any figure on
+  any pack opens into the exact source lines it stands on,
+  recomputed by :mod:`.drill` from the pack's stamped sources
+  at the stamped rates, and served only when the composition
+  foots to the figure (``DRILL_MISMATCH`` otherwise). The
+  pack's state rides the drill; blocked and stale packs drill
+  on their own stamps, like auditors do.
 
 Nothing here posts to a ledger, files a return, or moves money:
 the signed pack is the end of the line, by design.
@@ -59,6 +66,7 @@ from langgraph.types import Command
 
 from . import comparatives as comparatives_module
 from . import dispositions as dispositions_module
+from . import drill as drill_module
 from . import evidence as evidence_module
 from . import governance as governance_module
 from . import guardrails
@@ -81,6 +89,7 @@ from .schemas import (
     DefinitionDryRun,
     Disposition,
     EvidenceBundle,
+    FigureDrill,
     PackActivation,
     SourceBatch,
 )
@@ -816,6 +825,29 @@ class CloseService:
         pack.updated_at = _now()
         self.store.save_pack(pack)
         return pack
+
+    # -- figure drill-down -------------------------------------------
+
+    def figure_drill(self, pack_id: str, metric_id: str,
+                     entity_id: str | None = None) -> FigureDrill:
+        """Open one figure on a pack into the source lines it
+        stands on: a re-performance by :mod:`.drill` over the
+        pack's stamped sources, under the definitions the pack
+        cites (resolved the evidence layer's way — the version
+        on record or a refusal, never a substitute).
+
+        Any pack state may be drilled — the drill is computed
+        from the pack's stamps, so it stays true of the pack
+        after the world moves — and the state is named on the
+        drill. Refusals name their ground: no such figure
+        (:class:`DrillNotFound`), a stamped source missing or
+        moved, an unresolvable definition version, or a
+        composition that does not foot to the figure
+        (``DRILL_MISMATCH``)."""
+        pack = self.get_pack(pack_id)
+        definitions = evidence_module.resolve_definitions(self, pack)
+        return drill_module.build_drill(
+            self.store, pack, definitions, metric_id, entity_id)
 
     # -- audit evidence -------------------------------------------------
 
