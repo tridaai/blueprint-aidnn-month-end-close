@@ -87,3 +87,24 @@ def test_eval_pack_passes():
     assert results["gates"]["readiness: another item's waiver does not unblock"]
     assert results["gates"]["readiness: the check is a pure read"]
     assert results["gates"]["readiness: signed packs byte-identical"]
+    # Round 11: the sign-off chain gates too.
+    assert results["gates"][
+        "chain: blocked pack cannot be prepared "
+        "(blocking bites at step one)"]
+    assert results["gates"]["chain: review before preparation refused"]
+    assert results["gates"]["chain: sign before preparation refused"]
+    assert results["gates"]["chain: sign before review refused"]
+    assert results["gates"]["chain: preparer cannot review their own pack"]
+    assert results["gates"]["chain: neither earlier hand can sign"]
+    assert results["gates"]["chain: withdrawal by another hand refused"]
+    assert results["gates"][
+        "chain: withdrawal recorded; pack out of the chain"]
+    assert results["gates"][
+        "chain: full chain signs; downstream reads work as before"]
+    assert results["gates"][
+        "chain: signed pack byte-identical after later builds"]
+    assert results["gates"]["chain: bundle carries all three acts"]
+    assert results["gates"]["chain: withdrawal after signature refused"]
+    assert results["gates"][
+        "chain: legacy bundle states its single signature, "
+        "no invented acts"]

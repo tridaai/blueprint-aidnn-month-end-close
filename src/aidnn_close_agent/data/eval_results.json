@@ -30,7 +30,7 @@
   "evidence_drills": 25,
   "evidence_figures": 25,
   "evidence_manifest": 8,
-  "evidence_sha256": "1c1d44a4f0f3671e19f4f9c679880f28b9fb0620bc9f2d00f0a86a78bbb97705",
+  "evidence_sha256": "7b07b8e886a8753f5da89f163ee47ad279d2846025b47bbf791b534468bbf513",
   "october_gold_passed": 25,
   "october_gold_questions": 25,
   "ic_october_pair": {
@@ -83,7 +83,7 @@
       "369750.00"
     ]
   },
-  "october_evidence_sha256": "cb107d4139953c9cece63840ba2bea947ae90e900411ce84c4dc14fac9b91074",
+  "october_evidence_sha256": "1e27b6c9967ec4de08336df438ad3c0706ca363f4f2999705983e32d8639a0bc",
   "october_status": "SIGNED_OFF",
   "ic_variant_pair": {
     "elimination_id": "ic_sales",
@@ -132,7 +132,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-12T00:15:14.477918+00:00",
+      "at": "2026-10-12T02:05:04.258250+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -151,7 +151,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-12T00:15:14.484022+00:00",
+      "at": "2026-10-12T02:05:04.264367+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -204,7 +204,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "HLE's EUR 500 understatement is a known booking error in their close, confirmed with HLE's controller; immaterial to the group. Accepted for October and carried \u2014 it must clear in November's close.",
-      "at": "2026-10-12T00:15:14.531793+00:00",
+      "at": "2026-10-12T02:05:04.317694+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -223,7 +223,7 @@
       "decision": "ACCEPTED_CARRY",
       "actor": "Eval Controller",
       "reason": "The unmatched leg is the same understatement seen from the elimination side; accepted with it, on the same terms.",
-      "at": "2026-10-12T00:15:14.531844+00:00",
+      "at": "2026-10-12T02:05:04.317741+00:00",
       "supersedes": null,
       "origin_period": "2026-10",
       "origin_pack_id": "PACK-RUN-2026-10-1",
@@ -323,7 +323,7 @@
       "baseline_discrepancies": []
     },
     "digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
-    "computed_at": "2026-10-12T00:15:14.616210+00:00"
+    "computed_at": "2026-10-12T02:05:04.408820+00:00"
   },
   "governance_activation": {
     "activation_id": "ACT-harborlight-close-1",
@@ -335,7 +335,7 @@
     "dry_run_digest": "c1e8113588b6df071b0f2b6a97be57203da62bf7192bc0e2d39a4041dd4b7040",
     "actor": "Eval Controller",
     "reason": "Insurance premiums are reported to the board on their own line from November; they leave operating expenses and stand separately. Measured first, per the dry-run.",
-    "at": "2026-10-12T00:15:14.622577+00:00",
+    "at": "2026-10-12T02:05:04.416312+00:00",
     "supersedes": null
   },
   "governance_november_pack": "PACK-RUN-2026-11-1",
@@ -447,7 +447,28 @@
     "drill: derived figures compose, on no lines of their own": true,
     "drill: blocked and stale packs drill on their own stamps": true,
     "drill: tampered source line raises DRILL_MISMATCH naming the figure": true,
-    "drill: edited rate table reprices no drill (the stamp is the basis)": true
+    "drill: edited rate table reprices no drill (the stamp is the basis)": true,
+    "readiness: the check is a pure read": true,
+    "readiness: build refused while unready, items named": true,
+    "readiness: waiver refusals name their grounds": true,
+    "readiness: missing and short items named": true,
+    "readiness: complete period passes, manifest cited": true,
+    "readiness: another item's waiver does not unblock": true,
+    "readiness: waived build states the waiver; bundle carries it": true,
+    "readiness: signed packs byte-identical": true,
+    "chain: blocked pack cannot be prepared (blocking bites at step one)": true,
+    "chain: review before preparation refused": true,
+    "chain: sign before preparation refused": true,
+    "chain: sign before review refused": true,
+    "chain: preparer cannot review their own pack": true,
+    "chain: neither earlier hand can sign": true,
+    "chain: withdrawal by another hand refused": true,
+    "chain: withdrawal recorded; pack out of the chain": true,
+    "chain: full chain signs; downstream reads work as before": true,
+    "chain: signed pack byte-identical after later builds": true,
+    "chain: bundle carries all three acts": true,
+    "chain: withdrawal after signature refused": true,
+    "chain: legacy bundle states its single signature, no invented acts": true
   },
   "gate_passed": true
 }

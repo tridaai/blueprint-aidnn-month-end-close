@@ -288,6 +288,7 @@ from aidnn_close_agent.datasets import (  # noqa: E402
 from aidnn_close_agent.definitions import (  # noqa: E402
     load_definition_pack_version,
 )
+from aidnn_close_agent import comparatives as comparatives_module  # noqa: E402
 from aidnn_close_agent.demo import build_demo_service  # noqa: E402
 from aidnn_close_agent.engine_offline import OfflineFinanceEngine  # noqa: E402
 from aidnn_close_agent.errors import (  # noqa: E402
@@ -304,6 +305,21 @@ from aidnn_close_agent.store import InMemoryCloseStore  # noqa: E402
 
 def _figures(pack) -> dict:
     return {(f.metric_id, f.entity_id): f for f in pack.figures}
+
+
+PREPARER = "Eval Preparer"
+REVIEWER = "Eval Reviewer"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through the sign-off chain's first two
+    acts, so the controller's signature can stand: a named
+    preparer states the pack is ready, a named reviewer —
+    a different person — states they reviewed it."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
 
 
 def evaluate() -> dict:
@@ -402,6 +418,7 @@ def evaluate() -> dict:
     sign_gate = False
     signed = None
     if second.status == "AWAITING_CONTROLLER":
+        _chain(service, second.pack_id)
         signed = service.sign_off(second.pack_id, "sign", "Eval Controller")
         sign_gate = signed.status == "SIGNED_OFF" \
             and service.get_run(run.run_id).status == "CLOSED"
@@ -448,6 +465,9 @@ def evaluate() -> dict:
 
     readiness = _evaluate_readiness()
     results.update(readiness["results"])
+
+    chain = _evaluate_chain()
+    results.update(chain["results"])
 
     first_pair_ok = (
         len(first.ic_pairs) == 1
@@ -498,6 +518,7 @@ def evaluate() -> dict:
         **drills["gates"],
         **drill_tamper["gates"],
         **readiness["gates"],
+        **chain["gates"],
     }
     results["gate_passed"] = all(results["gates"].values())
     return results
@@ -748,6 +769,7 @@ def _evaluate_october(september_service, signed_september) -> dict:
         service.acknowledge_restatement(
             pack.pack_id, "Eval Controller",
             "September restatement reviewed; comparatives stand as signed.")
+        _chain(service, pack.pack_id)
         signed_october = service.sign_off(pack.pack_id, "sign",
                                           "Eval Controller")
         signs = signed_october.status == "SIGNED_OFF" \
@@ -1145,6 +1167,7 @@ def _evaluate_dispositions() -> dict:
     presented = service.build_pack(run.run_id)
     signed = None
     if presented.status == "AWAITING_CONTROLLER":
+        _chain(service, presented.pack_id)
         signed = service.sign_off(presented.pack_id, "sign", controller,
                                   "accepted on the record")
     gates["all dispositioned: the pack presents and signs"] = (
@@ -1206,6 +1229,7 @@ def _evaluate_dispositions() -> dict:
     nov_presented = november.build_pack(nov_run.run_id)
     nov_signed = None
     if nov_presented.status == "AWAITING_CONTROLLER":
+        _chain(november, nov_presented.pack_id)
         nov_signed = november.sign_off(nov_presented.pack_id, "sign",
                                        controller, "second carry")
     gates["second carry counted on the face"] = (
@@ -1273,6 +1297,7 @@ def _evaluate_governance() -> dict:
     september.ingest(run.run_id,
                      [b.batch_id for b in world.batches_in_phase("late")])
     rebuilt = september.build_pack(run.run_id)
+    _chain(september, rebuilt.pack_id)
     signed_september = september.sign_off(rebuilt.pack_id, "sign",
                                           controller)
     if signed_september.status != "SIGNED_OFF":
@@ -1288,6 +1313,7 @@ def _evaluate_governance() -> dict:
     october.acknowledge_restatement(
         oct_pack.pack_id, controller,
         "September restatement reviewed; comparatives stand as signed.")
+    _chain(october, oct_pack.pack_id)
     signed_october = october.sign_off(oct_pack.pack_id, "sign", controller)
     if signed_october.status != "SIGNED_OFF":
         return out
@@ -1423,6 +1449,7 @@ def _evaluate_governance() -> dict:
 
     signed_november = None
     if nov_pack.status == "AWAITING_CONTROLLER":
+        _chain(november, nov_pack.pack_id)
         signed_november = november.sign_off(
             nov_pack.pack_id, "sign", controller,
             "first close under v1.2.0")
@@ -1586,6 +1613,7 @@ def _evaluate_drill_tamper() -> dict:
             run.run_id,
             [b.batch_id for b in world.batches_in_phase("late")])
         second = service.build_pack(run.run_id)
+        _chain(service, second.pack_id)
         return service, service.sign_off(
             second.pack_id, "sign", "Eval Controller")
 
@@ -1795,6 +1823,7 @@ def _evaluate_readiness() -> dict:
     september.ingest(run_opening.run_id, [
         b.batch_id for b in september_world.batches_in_phase("late")])
     rebuilt = september.build_pack(run_opening.run_id)
+    _chain(september, rebuilt.pack_id)
     september_signed = september.sign_off(
         rebuilt.pack_id, "sign", actor)
     september_signed_json = september.get_pack(
@@ -1867,6 +1896,7 @@ def _evaluate_readiness() -> dict:
         "connector; the content is the v2 content.")
     pack = october.build_pack(run_full.run_id)
     face = pack.readiness
+    _chain(october, pack.pack_id)
     october.sign_off(pack.pack_id, "sign", actor)
     october.generate_evidence(pack.pack_id)
     data, _content_type = october.evidence_download(
@@ -1892,6 +1922,173 @@ def _evaluate_readiness() -> dict:
         == september_signed_json)
 
     return {"results": {}, "gates": gates}
+
+
+def _evaluate_chain() -> dict:
+    """Act nine: the sign-off chain. A pack is signed by
+    three ordered acts — a named preparer states it is
+    ready, a named reviewer states they reviewed it, a
+    controller signs — three different people, or the acts
+    are refused by name. The blocking discipline bites at
+    the chain's first step: a blocked pack cannot even be
+    prepared. The preparer may withdraw a pack before the
+    chain completes; after the signature, nobody may. The
+    controller's act is the signature downstream has always
+    keyed on, and a pack signed before the chain existed
+    states its single legacy signature honestly."""
+    out: dict = {"results": {}, "gates": {}}
+    gates = out["gates"]
+    controller = "Eval Controller"
+
+    def refused(fn) -> str:
+        try:
+            fn()
+        except GateError as exc:
+            return str(exc)
+        return ""
+
+    service = build_demo_service()
+    world = build_world()
+    run = service.create_run(PERIOD)
+    service.ingest(run.run_id,
+                   [b.batch_id for b in world.batches_in_phase("initial")])
+    blocked = service.build_pack(run.run_id)
+
+    # The blocking check bites at step one: preparation
+    # itself is refused on a blocked pack, by name.
+    gates["chain: blocked pack cannot be prepared "
+          "(blocking bites at step one)"] = (
+        blocked.status == "BLOCKED"
+        and "is BLOCKED" in refused(
+            lambda: service.prepare_pack(blocked.pack_id, PREPARER)))
+
+    service.ingest(run.run_id,
+                   [b.batch_id for b in world.batches_in_phase("late")])
+    pack = service.build_pack(run.run_id)
+
+    # Order: review before preparation, and a signature
+    # before review, are refused by name.
+    gates["chain: review before preparation refused"] = (
+        "has not been prepared" in refused(
+            lambda: service.review_pack(pack.pack_id, REVIEWER,
+                                        "reviewed it")))
+    gates["chain: sign before preparation refused"] = (
+        "has not been prepared" in refused(
+            lambda: service.sign_off(pack.pack_id, "sign", controller)))
+    service.prepare_pack(pack.pack_id, PREPARER)
+    gates["chain: sign before review refused"] = (
+        "has not been reviewed" in refused(
+            lambda: service.sign_off(pack.pack_id, "sign", controller)))
+
+    # Segregation: the same person in two roles, refused
+    # by name at each step.
+    gates["chain: preparer cannot review their own pack"] = (
+        "cannot also review" in refused(
+            lambda: service.review_pack(pack.pack_id, PREPARER,
+                                        "reviewed it")))
+    service.review_pack(pack.pack_id, REVIEWER,
+                        "reviewed the variances, the dispositions, "
+                        "and the readiness statement")
+    gates["chain: neither earlier hand can sign"] = (
+        "already stands on" in refused(
+            lambda: service.sign_off(pack.pack_id, "sign", PREPARER))
+        and "already stands on" in refused(
+            lambda: service.sign_off(pack.pack_id, "sign", REVIEWER)))
+
+    # Withdrawal: only the preparer, only before the chain
+    # completes — then the close is rebuilt and signs.
+    gates["chain: withdrawal by another hand refused"] = (
+        "only its preparer" in refused(
+            lambda: service.withdraw_pack(pack.pack_id, REVIEWER,
+                                          "not mine to take back")))
+    withdrawn = service.withdraw_pack(
+        pack.pack_id, PREPARER,
+        "the pack was built against a stale extract; rebuild")
+    gates["chain: withdrawal recorded; pack out of the chain"] = (
+        withdrawn.status == "WITHDRAWN"
+        and withdrawn.withdrawal is not None
+        and withdrawn.withdrawal.actor == PREPARER
+        and "is WITHDRAWN" in refused(
+            lambda: service.sign_off(withdrawn.pack_id, "sign",
+                                     controller)))
+    rebuilt = service.build_pack(run.run_id)
+    _chain(service, rebuilt.pack_id)
+    signed = service.sign_off(rebuilt.pack_id, "sign", controller)
+    signed_json = service.get_pack(signed.pack_id).model_dump_json()
+
+    # The full chain signs, and downstream reads the
+    # signature exactly as it did when signing was one act:
+    # the signed pack is findable, October builds its
+    # comparatives over it, the run is closed.
+    store = service.store
+    pack_v110 = load_definition_pack_version("harborlight-close",
+                                             "1.1.0")
+    pipeline = PackPipeline(
+        engine=OfflineFinanceEngine(), store=store, pack=pack_v110,
+        checkpointer=MemorySaver(),
+    )
+    october = CloseService(
+        pipeline=pipeline, store=store, connector=service.connector,
+        objects=service.objects, pack_def=pack_v110,
+    )
+    october_world = build_october_world()
+    oct_run = october.create_run(PERIOD_OCTOBER)
+    october.ingest(oct_run.run_id,
+                   [b.batch_id for b in october_world.batches])
+    october_pack = october.build_pack(oct_run.run_id)
+    found = comparatives_module.find_signed_pack(store, PERIOD)
+    gates["chain: full chain signs; downstream reads work "
+          "as before"] = (
+        signed.status == "SIGNED_OFF"
+        and [a.role for a in signed.signoff_chain] == [
+            "preparer", "reviewer"]
+        and signed.decision.actor == controller
+        and service.get_run(run.run_id).status == "CLOSED"
+        and found is not None and found.pack_id == signed.pack_id
+        and len(october_pack.comparatives) == 25)
+    gates["chain: signed pack byte-identical after later "
+          "builds"] = (
+        store.get_pack(signed.pack_id).model_dump_json()
+        == signed_json)
+
+    # The bundle carries the whole chain.
+    service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    chain_section = (document.get("sign_off") or {}).get("chain")
+    raw_text, _ = service.evidence_download(signed.pack_id, "txt")
+    gates["chain: bundle carries all three acts"] = (
+        chain_section is not None
+        and [a["role"] for a in chain_section] == [
+            "preparer", "reviewer"]
+        and chain_section[0]["actor"] == PREPARER
+        and chain_section[1]["actor"] == REVIEWER
+        and chain_section[1]["variances_count"] == 0
+        and "chain · reviewer" in raw_text.decode("utf-8"))
+
+    # After the signature there is no withdrawal.
+    gates["chain: withdrawal after signature refused"] = (
+        "cannot be withdrawn" in refused(
+            lambda: service.withdraw_pack(signed.pack_id, PREPARER,
+                                          "too late")))
+
+    # A legacy record — a signature with no chain on it,
+    # the shape pre-chain code wrote — bundles with the
+    # absence stated and no acts invented.
+    legacy = service.get_pack(signed.pack_id)
+    legacy.signoff_chain = []
+    store.save_pack(legacy)
+    service.generate_evidence(signed.pack_id)
+    data, _ = service.evidence_download(signed.pack_id, "json")
+    document = json.loads(data)
+    raw_text, _ = service.evidence_download(signed.pack_id, "txt")
+    gates["chain: legacy bundle states its single signature, "
+          "no invented acts"] = (
+        (document.get("sign_off") or {}).get("chain") is None
+        and document["sign_off"]["actor"] == controller
+        and "signed under the single-act sign-off"
+        in raw_text.decode("utf-8"))
+    return out
 
 
 if __name__ == "__main__":
