@@ -121,6 +121,20 @@ composition the sources now produce, against the figure the
 board signed) instead of a digest: the bundle names it,
 exactly as it names a dispositioned figure's true verdict,
 and never papers over it with a clean citation.
+
+Pre-close readiness (round 10) joins as ``readiness``: the
+statement from the signed pack's face (the manifest it ran
+under, complete or waived), the manifest record it cites,
+and — for a close that started short-handed — the waiver
+records that licensed it, quoted whole: an auditor must see
+that the close ran under waiver, which items were missing,
+and who allowed it and why. The cited manifest must stand
+in the store at the cited version, and every cited waiver
+must stand with the actor, reason, and items the citation
+quotes, or generation refuses with the gap named. A pack
+built for a period no manifest governed projects
+``readiness: null`` — the close ran under the standing
+checklist alone, and there is nothing to cite.
 """
 
 from __future__ import annotations
@@ -463,6 +477,64 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             },
         }
 
+    # The readiness statement on the pack's face must cite
+    # records that stand: the manifest that governed the
+    # build, at the version the statement cites, and every
+    # waiver the statement quotes — actor, reason, and the
+    # items it covered. A citation that cannot be resolved,
+    # or resolves to a different record, is a gap, named like
+    # every other gap here.
+    readiness_section = None
+    if pack.readiness is not None:
+        statement = pack.readiness
+        manifest = service.store.get_manifest(statement.manifest_id)
+        if manifest is None:
+            raise EvidenceError(
+                f"pack {pack.pack_id} states readiness under "
+                f"manifest {statement.manifest_id}, which does "
+                "not stand in the store — the expectation the "
+                "close ran against cannot be evidenced"
+            )
+        if manifest.version != statement.manifest_version \
+                or manifest.period != pack.period:
+            raise EvidenceError(
+                f"pack {pack.pack_id} cites manifest "
+                f"{statement.manifest_id} "
+                f"v{statement.manifest_version} for period "
+                f"{pack.period}, but the record standing under "
+                f"that id is v{manifest.version} for "
+                f"{manifest.period} — the statement and the "
+                "record disagree"
+            )
+        waiver_records = []
+        for citation in statement.waivers:
+            record = service.store.get_waiver(citation.waiver_id)
+            if record is None:
+                raise EvidenceError(
+                    f"pack {pack.pack_id} was built under "
+                    f"waiver {citation.waiver_id}, which does "
+                    "not stand in the store — the licence the "
+                    "close started under cannot be evidenced"
+                )
+            if record.actor != citation.actor \
+                    or record.reason != citation.reason \
+                    or not set(citation.items) <= set(record.items):
+                raise EvidenceError(
+                    f"waiver {record.waiver_id} stands in the "
+                    f"store with actor {record.actor!r} and "
+                    f"items {record.items}, but pack "
+                    f"{pack.pack_id} cites it as "
+                    f"{citation.actor!r} covering "
+                    f"{citation.items} — the citation and the "
+                    "record disagree"
+                )
+            waiver_records.append(record.model_dump())
+        readiness_section = {
+            "statement": statement.model_dump(),
+            "manifest": manifest.model_dump(),
+            "waivers": waiver_records,
+        }
+
     return {
         "format": BUNDLE_FORMAT,
         "pack": {
@@ -507,6 +579,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
         "opening_items": [i.model_dump() for i in pack.opening_items]
         if pack.opening_items else None,
         "definition_change": definition_change_section,
+        "readiness": readiness_section,
         "variances": [v.model_dump() for v in pack.variances],
     }
 
@@ -880,6 +953,33 @@ def render_text(document: dict) -> str:
             lines.append(
                 f"    would drop · {figure['metric_id']} · {scope} · "
                 f"{figure['currency']} {figure['value']}")
+    readiness = document.get("readiness")
+    if readiness is not None:
+        statement = readiness["statement"]
+        manifest = readiness["manifest"]
+        lines.append("")
+        if statement["status"] == "WAIVED":
+            lines.append(
+                f"READINESS — WAIVED: this close started "
+                f"short-handed under manifest "
+                f"{statement['manifest_id']} "
+                f"(v{statement['manifest_version']}, by "
+                f"{manifest['actor']} — {manifest['note']}):")
+            for name in statement["waived_items"]:
+                lines.append(f"  ✗ {name}")
+            for waiver in readiness["waivers"]:
+                lines.append(
+                    f"  Waived by {waiver['actor']} at "
+                    f"{waiver['at']} ({waiver['waiver_id']}) — "
+                    f"{waiver['reason']} · covering: "
+                    + ", ".join(waiver["items"]))
+        else:
+            lines.append(
+                f"READINESS — COMPLETE: every expected source "
+                f"was received at its expected version under "
+                f"manifest {statement['manifest_id']} "
+                f"(v{statement['manifest_version']}, by "
+                f"{manifest['actor']} — {manifest['note']})")
     if document["variances"]:
         lines.append("")
         lines.append("VARIANCES ON THE SIGNED RECORD:")
