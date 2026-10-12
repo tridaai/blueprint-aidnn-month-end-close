@@ -417,6 +417,106 @@ period holds the signature) before resuming the graph. Three
 roles, three code paths, no shared "just proceed" switch
 anywhere.
 
+## The sign-off chain: the signature is the third act
+
+Until round 11, the gate above was one act: a named
+controller signed, and that was the whole of the close's
+accountability at signing — thinner than the governance the
+rest of the system had grown (dispositions are named acts,
+acknowledgements are named acts, activations and waivers
+are named acts). Signing is now a chain of three ordered
+acts by three different people, recorded on the pack
+(`signoff_chain.py` holds the vocabulary and the stamps;
+the service holds the acts):
+
+1. **Preparation** — a named preparer states the pack is
+   ready. The act stamps the pack as it stands — figure,
+   variance, and disposition counts, and the readiness
+   statement's status where one governs — because that is
+   what the preparer is vouching for.
+2. **Review** — a named reviewer states they reviewed the
+   pack, in a note in their own words (the acknowledgement
+   precedent: review is evidenced, not implied). The act
+   stamps the same counts at review time: what the review
+   covered is on the record, and the console, the API, and
+   the pack's face all show the reviewer the variances, the
+   dispositions, and the readiness statement the stamp
+   summarizes.
+3. **Signature** — the controller's act, and exactly the
+   act it was before the chain existed: the same decision
+   record, the same SIGNED_OFF status, the same run closing.
+   Everything downstream — comparatives, carries, drills,
+   bundles — keys on the controller act exactly as it keyed
+   on the single signature, and cannot tell the chain
+   exists except by reading the pack's richer face. That
+   was a design constraint, not a side effect: the chain
+   deepens accountability at the gate without moving a
+   single downstream read.
+
+The refusals are the discipline. Out-of-order acts are
+refused by name (a review with no preparation under it, a
+signature with no review). The same person in two roles is
+refused by name — the reviewer cannot be the preparer, and
+neither earlier hand can sign — the two-eyes rule the
+system already kept for shift handoffs and template
+promotion elsewhere in this program: an act and its check
+are never the same person's. One preparation and one
+review stand per pack; to start over, the pack is
+withdrawn and the close rebuilt.
+
+**Where the blocking check bites.** It bites where it
+always bit — at verification: a pack with blocking
+variances never leaves BLOCKED, and a BLOCKED pack never
+reaches the gate. The chain's first act inherits that
+exactly: preparation requires AWAITING_CONTROLLER, so a
+blocked pack cannot even be prepared — the first step of
+the chain is the first place the bite is *felt*, but the
+check itself did not move, and the chain wraps the gate
+without softening it. The two honest exits from BLOCKED
+are unchanged: fix the sources and rebuild, or accept each
+break on the record with a disposition and rebuild under
+it. Every refusal the signature always made — blocked,
+stale, unacknowledged restatement, anonymous — keeps its
+ground and its order; the chain check is the last gate the
+signature passes, after all of them.
+
+**Withdrawal.** Before the chain completes, the preparer
+may take the pack back: a named act with a reason, on the
+pack's record (the append-only idiom — the withdrawal is
+stated, and the chain acts that stood stay stated). Only
+the preparer can withdraw: the act undoes their own
+statement of readiness. The pack leaves as WITHDRAWN — it
+is never edited back into play; the close is rebuilt
+instead, and the withdrawn pack is exempt from staleness
+marking alongside the decided states. After the
+controller's signature there is no withdrawal at all, by
+name: a signed pack is immutable, and a period that must
+be corrected is corrected by the restatement machinery,
+which is untouched.
+
+**"Figures frozen from the preparation act."** Surveyed
+mechanically, a built pack's figures are never mutated by
+any code path — dispositions land only on BLOCKED packs,
+acknowledgements record beside the figures, staleness
+retires unsigned packs whole. The preparation act's stamp
+is therefore the freeze made legible: the counts the
+preparer vouched for, against which the reviewer's stamp
+and the signed record can be read. A pack whose stamps
+moved under it goes STALE like any unsigned pack — chain
+acts and all — and a rebuild starts the chain fresh.
+
+**Legacy signatures.** Packs signed before the chain
+existed carry the single signature and no chain, and the
+record says so: the evidence bundle projects the chain as
+`null` and its text rendering states the single-act
+signature plainly. No preparation or review is ever
+reconstructed for them — the honest-null idiom every
+younger section of the bundle already kept. For packs
+signed under the chain, the bundle's completeness checks
+extend to it: one preparation, one review, in order,
+three different hands, or generation refuses with the gap
+named.
+
 ## Variance disposition: governance around the verdict
 
 Until round 7, a blocking variance had exactly one exit:
@@ -667,7 +767,14 @@ it carries them; the definition change the pack was first
 governed under, with the activation and dry-run behind it,
 when it carries one; the standing
 variances; and the sign-off record — decision, controller,
-reason, time — with the run's checklist state.
+reason, time — with the run's checklist state, and, inside
+it, the sign-off chain: the preparation and review acts
+that preceded the signature, checked whole at generation
+(one preparation, one review, in order, three different
+hands) when a chain stands on the pack, and projected as
+absent — `chain: null`, stated in words in the text
+rendering — for a pack signed under the single-act
+sign-off, before the chain existed.
 
 The flux section joins the bundle **under the same `v1`
 format** — the precedent the comparative layer set when it
@@ -967,9 +1074,12 @@ blueprints' record discipline:
   recorded on the pack or carried onto its face, and the
   opening items it was re-tested against; and, on the first
   pack governed by a newly activated definition version, the
-  change statement. All ride the JSONB payload — no
-  migration; the store's shape was already "the pack record,
-  whole";
+  change statement; and the sign-off chain: the preparation
+  and review acts (role, actor, moment, note, and the counts
+  each act stamped), and the withdrawal record when the
+  preparer took the pack back. All ride the JSONB payload —
+  no migration; the store's shape was already "the pack
+  record, whole";
 - `evidence_bundles` — one row per generated audit bundle
   (`0002_evidence_bundles.sql`): pack and period for lookup,
   the object-store keys, the digest, the counts, and the

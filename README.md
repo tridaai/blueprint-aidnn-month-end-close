@@ -181,6 +181,31 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   group controller signs or returns them, by name, with a
   reason. Engine proposes, verifier disposes, controller signs:
   three separate code paths.
+- **The sign-off chain** — the signature is a chain's third
+  act, not a click. A named **preparer** first states the
+  pack is ready, stamping the counts they vouch for (figures,
+  variances, dispositions, the readiness statement's
+  status); a named **reviewer** — never the preparer — then
+  states they reviewed it, in their own words, stamping what
+  the review saw; only then does the controller sign, and
+  neither earlier hand may hold the pen. Out-of-order acts
+  and same-person acts are refused by name. The blocking
+  discipline is untouched and bites at the chain's first
+  step: a blocked pack cannot even be prepared — its breaks
+  are fixed at the source, or accepted on the record and the
+  close rebuilt. Before the chain completes, the preparer
+  may **withdraw** the pack (a named act with a reason, on
+  the record; the close is rebuilt instead); after the
+  signature, nobody may — a signed pack is immutable, and a
+  restated period is corrected by restatement, not by taking
+  history back. The controller's act itself is exactly what
+  it was when signing was one act — comparatives, carries,
+  and bundles key on it unchanged — and the pack's face and
+  its evidence bundle carry the whole chain, so an auditor
+  reads who prepared, who reviewed, and who signed. A pack
+  signed before the chain existed states its single legacy
+  signature as exactly that; no earlier acts are invented
+  for it.
 - **The narrative** — composed **only from verified figures**:
   the builder raises on any unverified input, so a blocked pack
   has no narrative and no number can be talked into the board
@@ -319,7 +344,10 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   opening items it carried in, any definition change the pack
   was first governed under — the activation that made the new
   version govern and the dry-run behind it — and the sign-off record with the checklist
-  state the signature froze. The bundle is a **projection of stored records** —
+  state the signature froze, the sign-off chain inside it
+  (who prepared, who reviewed, what each act stamped —
+  checked whole at generation, or stated as a legacy
+  single-act signature for a pack that predates the chain). The bundle is a **projection of stored records** —
   it recomputes nothing — it is refused for anything but a
   `SIGNED_OFF` pack (state named), it is checked for
   completeness before anything is written (any gap refuses,
@@ -690,6 +718,7 @@ src/aidnn_close_agent/
   evidence.py       the audit evidence pack: gated, checked projection
   drill.py          figure drill-down: every figure re-performed to its lines
   readiness.py      pre-close readiness: manifests, the check, the waiver math
+  signoff_chain.py  the sign-off chain: the acts' vocabulary, stamps, bundle check
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate
