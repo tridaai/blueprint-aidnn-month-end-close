@@ -115,6 +115,51 @@ def main(argv: list[str] | None = None) -> int:
     p_act.add_argument("--from-period", required=True)
     p_act.add_argument("--actor", required=True)
     p_act.add_argument("--reason", required=True)
+    p_ready = sub.add_parser(
+        "readiness",
+        help="the pre-close readiness check for a run: the "
+             "period's governing manifest against the run's "
+             "received sources, every failing item named (a "
+             "pure read — it registers nothing)")
+    p_ready.add_argument("run_id")
+    p_ready.add_argument("--text", action="store_true",
+                         help="print the readable report instead "
+                              "of JSON")
+    p_manifests = sub.add_parser(
+        "manifests",
+        help="list the expectation manifests on record, "
+             "optionally for one --period")
+    p_manifests.add_argument("--period", default=None)
+    p_manifest = sub.add_parser(
+        "record-manifest",
+        help="record a named controller's expectation "
+             "manifest for a period (append-only: a new "
+             "version, naming the one it supersedes)")
+    p_manifest.add_argument("--period", required=True)
+    p_manifest.add_argument("--actor", required=True)
+    p_manifest.add_argument("--note", required=True)
+    p_manifest.add_argument(
+        "--entries", required=True,
+        help="the entries as a JSON list of "
+             "{slot, kind, entity_id, expected_version, "
+             "expected_batch_id}")
+    p_waivers = sub.add_parser(
+        "waivers",
+        help="list the readiness waivers on record, "
+             "optionally for one --period")
+    p_waivers.add_argument("--period", default=None)
+    p_waiver = sub.add_parser(
+        "record-waiver",
+        help="record a named controller's readiness waiver: "
+             "the period's close may be built despite the "
+             "named failing items (a blanket waiver, naming "
+             "nothing, is refused)")
+    p_waiver.add_argument("--period", required=True)
+    p_waiver.add_argument("--actor", required=True)
+    p_waiver.add_argument("--reason", required=True)
+    p_waiver.add_argument("--item", action="append", required=True,
+                          help="one failing item's exact name; "
+                               "repeat for each item covered")
     sub.add_parser("runs", help="list all close runs as JSON")
     args = parser.parse_args(argv)
 
@@ -171,6 +216,34 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "definition-activate":
             record = service.activate_definition_pack(
                 args.version, args.from_period, args.actor, args.reason)
+            print(record.model_dump_json(indent=2))
+        elif args.command == "readiness":
+            report = service.readiness(args.run_id)
+            if args.text:
+                from .readiness import render_text
+                sys.stdout.write(render_text(report))
+            else:
+                print(report.model_dump_json(indent=2))
+        elif args.command == "manifests":
+            print(json.dumps(
+                [m.model_dump()
+                 for m in service.list_manifests(args.period)],
+                indent=2))
+        elif args.command == "record-manifest":
+            from .schemas import ManifestEntry
+            entries = [ManifestEntry.model_validate(e)
+                       for e in json.loads(args.entries)]
+            record = service.record_manifest(
+                args.period, entries, args.actor, args.note)
+            print(record.model_dump_json(indent=2))
+        elif args.command == "waivers":
+            print(json.dumps(
+                [w.model_dump()
+                 for w in service.list_waivers(args.period)],
+                indent=2))
+        elif args.command == "record-waiver":
+            record = service.record_waiver(
+                args.period, args.item, args.actor, args.reason)
             print(record.model_dump_json(indent=2))
         elif args.command == "runs":
             print(json.dumps([r.model_dump() for r in service.list_runs()],

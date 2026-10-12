@@ -31,6 +31,7 @@ from .checkpoints import checkpointer_name
 from .config import finance_engine, load_dotenv
 from .errors import CloseError
 from .observability import configure_json_logging, new_request_id, request_id_ctx
+from .schemas import ManifestEntry
 from .service import CloseService
 from .wiring import build_service
 
@@ -78,6 +79,20 @@ class DryRunRequest(BaseModel):
 class ActivateRequest(BaseModel):
     version: str
     from_period: str
+    actor: str
+    reason: str
+
+
+class ManifestRequest(BaseModel):
+    period: str
+    actor: str
+    note: str
+    entries: list[ManifestEntry]
+
+
+class WaiverRequest(BaseModel):
+    period: str
+    items: list[str]
     actor: str
     reason: str
 
@@ -218,6 +233,50 @@ def create_app(service: CloseService | None = None) -> FastAPI:
     @app.post("/runs/{run_id}/packs", status_code=201)
     def build_pack(run_id: str) -> dict:
         return svc().build_pack(run_id).model_dump()
+
+    @app.get("/runs/{run_id}/readiness")
+    def run_readiness(run_id: str) -> dict:
+        """The pre-close readiness check for a run: the
+        period's governing manifest against the run's received
+        sources — every expected entry's state, every failing
+        item named in the words a waiver must use, and the
+        prior period's state (reported, never required). A
+        pure read."""
+        return svc().readiness(run_id).model_dump()
+
+    @app.post("/manifests", status_code=201)
+    def record_manifest(request: ManifestRequest) -> dict:
+        """Record a named controller's expectation manifest
+        for a period. Append-only: recording over an existing
+        manifest creates the next version, naming its
+        predecessor. Refused (409, ground named) for an
+        unnamed author, a missing note, no entries, or a slot
+        that does not match its entity and kind."""
+        record = svc().record_manifest(
+            request.period, request.entries, request.actor,
+            request.note)
+        return record.model_dump()
+
+    @app.get("/manifests")
+    def list_manifests(period: str | None = None) -> list[dict]:
+        return [m.model_dump() for m in svc().list_manifests(period)]
+
+    @app.post("/waivers", status_code=201)
+    def record_waiver(request: WaiverRequest) -> dict:
+        """Record a named controller's readiness waiver: this
+        period's close may be built despite the named failing
+        items. Refused (409, ground named) for an unnamed
+        controller, a missing reason, a blanket waiver (no
+        items), a signed period, or an item the period's
+        current check is not failing on."""
+        record = svc().record_waiver(
+            request.period, request.items, request.actor,
+            request.reason)
+        return record.model_dump()
+
+    @app.get("/waivers")
+    def list_waivers(period: str | None = None) -> list[dict]:
+        return [w.model_dump() for w in svc().list_waivers(period)]
 
     @app.get("/packs/{pack_id}")
     def get_pack(pack_id: str) -> dict:
