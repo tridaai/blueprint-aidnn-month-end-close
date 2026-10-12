@@ -475,6 +475,58 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   `record-manifest`, `record-waiver`), and the console (the
   run's readiness, and the statement on every pack).
 
+- **The signed period is watched** — everything above looks
+  forward; the watch looks back. A signed period's sources
+  can still move: a corrected extract lands outside any run
+  (its run is closed) and attaches to nothing, and until
+  this layer the movement was only ever computed when the
+  *next* period built — if the next close was never built,
+  nothing noticed at all. The **source watch** is computed
+  on read, in code, from the signed pack of record for each
+  period: every stamped source is matched to its
+  supersession chain by identity (the stamp names the exact
+  batch; the chain is walked through its `supersedes` links
+  to the tip — the same walk the comparative layer
+  performs), and every source whose chain has advanced is
+  named as an item: the slot, the delivery signed against
+  (id and version), the chain's current tip (id and
+  version), every delivery that landed in between, and the
+  tip's own arrival stamp — its phase, because batches
+  carry no receipt clock and the watch names the delivery
+  rather than invent a time. An item's state is derived,
+  never stored: **OPEN**; **ACKNOWLEDGED**, when a named
+  controller has recorded an answer covering exactly that
+  tip — `RESTATEMENT_PLANNED` (the intent and the reason on
+  the record; the acknowledgement restates nothing itself)
+  or `NO_ACTION` (the controller's stated judgement, reason
+  required, the item staying visible in the considered
+  section — a legible record, not an absence of noise); or
+  **ANSWERED**, when a later signed pack's acknowledged
+  restatement report names the movement — derived from the
+  answering pack's own record, no flag stored anywhere.
+  When a chain advances past an acknowledged tip, the item
+  re-opens at the new tip: an acknowledgement covers exactly
+  the movement it saw. The watch judges **movement, never
+  materiality** — whether a movement changes a figure is
+  the next build's recomputation, or the controller's
+  stated judgement — and it never fires for a period with
+  no signed pack: a close still in flight finds its changed
+  inputs at its own gate, and the sign gate already refuses
+  a pack built from superseded sources. It rebuilds
+  nothing, restates nothing, and unsigns nothing; reading
+  it writes nothing, and recording an acknowledgement
+  writes only the acknowledgement — the signed pack, its
+  figures, its sign-off chain, and its evidence bundle are
+  byte-identical across both. Packs signed before the
+  sign-off chain existed are watched like any other (the
+  watch keys on the signed status, not the chain).
+  Surfaces: the API (`GET /source-watch`,
+  `POST /source-watch/acknowledge`, and the per-pack face
+  at `GET /packs/{id}/source-watch`), the CLI
+  (`source-watch`, `acknowledge-source-movement`), and the
+  console (the watch panel, and the open count on every
+  signed pack).
+
 ## The aidnn seam
 
 aidnn is a deployed product application, not a public API
@@ -519,7 +571,9 @@ Copy `.env.example` to `.env` and set what you use:
   run — and the verifier's guarantee does not depend on which
   engine proposed the figures.
 - The synthetic sources cover **two periods** (September and
-  October 2026) plus one post-sign-off restatement — and a
+  October 2026) plus three post-sign-off restatement
+  deliveries (the payroll correction, its own correction,
+  and a memo-only re-delivery) — and a
   third staged month, November, which is October's trading one
   month on and exists to exercise the disposition carry: one month
   of journals per entity per period, AR summaries, a rate
@@ -698,6 +752,30 @@ gates on it:
   waiver record. The check is a pure read (the store is
   byte-identical across it), and the September pack signed
   in the act is byte-identical at the end of everything.
+- **The source watch** — a tenth act looks back at the
+  signed period: September signs on a fresh store and the
+  watch is quiet; an unsigned September on a second store
+  receives the same corrected extract and raises nothing.
+  On the signed store the delivery stands as exactly one
+  OPEN item naming both versions and the chain; the
+  acknowledgement refusals name their grounds (unnamed
+  controller, missing reason, unsigned period, unmoved
+  slot, a tip that is not the chain's tip); a
+  RESTATEMENT_PLANNED answer covers exactly the v2 tip and
+  a second answer at that tip is refused naming the
+  standing record; the memo-only HLE re-delivery is
+  answered NO_ACTION and renders in the considered section
+  with its reason quoted; the HLG chain advancing again
+  (the correction corrected, v3) re-opens its item past
+  the v2 acknowledgement; the read is pure and an
+  acknowledgement writes only itself; and when October
+  closes over the same store and signs behind its
+  acknowledged restatement, both September items read
+  ANSWERED off October's own record — the NO_ACTION
+  acknowledgement still quoted — an answered movement
+  takes no further acknowledgement, and the signed
+  September pack is byte-identical at the end of
+  everything.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -719,6 +797,7 @@ src/aidnn_close_agent/
   drill.py          figure drill-down: every figure re-performed to its lines
   readiness.py      pre-close readiness: manifests, the check, the waiver math
   signoff_chain.py  the sign-off chain: the acts' vocabulary, stamps, bundle check
+  sourcewatch.py    the post-sign-off source watch: movements, derived states
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate

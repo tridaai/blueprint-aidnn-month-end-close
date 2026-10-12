@@ -1057,9 +1057,134 @@ statement: readiness is an expectation a controller chose
 to state, and where none was stated the system does not
 invent one.
 
+## The source watch: a signed period whose inputs moved
+
+Every layer above looks forward: readiness before the
+build, staleness during it, the chain at its signature,
+comparatives at the next one. The restatement machinery
+is the one backward-looking piece, and it has a trigger
+problem: `_detect_restatement` runs inside the next
+period's build. A corrected extract for a signed period
+arrives through `receive_restatement` — archived, stored,
+attached to nothing, because the signed period's run is
+closed and history is not edited — and until somebody
+builds the next close, nothing anywhere states that the
+signed period's inputs no longer stand where the board
+left them. Where there is no next close, nothing ever
+states it.
+
+The watch (`sourcewatch.py`) is the standing look back,
+computed on read from two things the store already
+holds: the signed packs' stamps and the supersession
+chains.
+
+**The matching rule.** For the signed pack of record of
+each period — `find_signed_pack`, the same record the
+comparatives cite — each stamped `(batch_id, version)` is
+matched to its chain by identity: the chain is walked
+forward through the store-wide `supersedes` index (the
+identical walk `_detect_restatement` performs) to the
+terminal batch. The item's source identity is the slot,
+`slot_key` of the stamped batch — `ENTITY:kind` /
+`GROUP:kind`. A stamp whose batch is missing from the
+store is skipped: the item's identity cannot be proven,
+and the watch degrades to absent rather than guess, the
+idiom the flux layer uses for the same hole. Movement
+exists exactly when the terminal batch is not the stamped
+one. The item names the signed-against delivery and
+version, the tip delivery and version, every delivery
+that landed between (in chain order), and the tip's
+`phase` — its arrival stamp. Batches carry no receipt
+clock: an out-of-run delivery is archived and stored,
+never timestamped, so the watch names the delivery and
+its place in the chain rather than fabricate a landing
+time.
+
+**Movement, not materiality.** The watch never
+recomputes a figure — that is deliberately the
+comparative layer's job, at the next build, under the
+signed period's own definitions. What the watch claims
+is only that the inputs moved. Whether a movement
+matters is either that recomputation, or a controller's
+stated judgement on the acknowledgement record.
+
+**States are derived, never stored**, in a fixed
+precedence. *Answered*: some later pack stands
+`SIGNED_OFF` whose restatement report names this pack
+and lists this item's tip among its restated batches,
+with the report's acknowledgement on it (the sign gate
+makes the acknowledgement a precondition of the
+signature, so a signed answering pack is proof the
+movement was recomputed, named to the board, and
+acknowledged by a named controller — the derivation
+reads the answering pack's record and stores no flag).
+*Acknowledged*: a watch acknowledgement covers exactly
+this tip. *Open*: neither. Because the derivation reads
+current records, a chain that advances after an
+answering pack signed simply stops being answered at
+the new tip — the watermark behaviour falls out of the
+derivation instead of being maintained.
+
+**The acknowledgement** is a governance record of the
+standing kind (`0005_source_watch.sql`, its own table on
+the 0003/0004 justification: it belongs to a period and a
+source, not to any pack — the pack it answers for is
+signed history and is never written to). It names its
+controller and carries a reason either way; its
+disposition is `RESTATEMENT_PLANNED` (intent recorded —
+the act restates nothing; the restatement itself remains
+the next build's work and the controller's signature
+decision) or `NO_ACTION` (the controller's judgement,
+which stays visible in the report's considered section:
+the record is the point, not the quiet). It covers
+exactly one movement — period, slot, and the tip batch
+id the controller saw — and recording refuses, each
+ground named: an unnamed controller; a missing reason; a
+period with no signed pack; a slot the signed pack
+carries no source in, or one whose chain has not moved;
+a named tip that is not the chain's current tip (the
+movement was overtaken — the refusal names the tip that
+stands); a movement already answered through the
+restatement road; and a movement already acknowledged at
+that tip, whose standing record the refusal names. There
+is no edit and no un-acknowledge: a further answer waits
+for a further movement.
+
+**Why unsigned periods are silent.** The watch is
+defined over signed packs' stamps, so a period with no
+signed pack — building, blocked, stale, awaiting,
+returned, withdrawn — produces no item, by construction
+rather than by filter. That is the honest boundary, not
+a gap: a close still in flight meets its changed inputs
+through its own machinery (the build reads the chains as
+they stand; the sign gate refuses a pack whose stamps no
+longer match its run). The watch exists for the one
+state that machinery cannot reach — signed, closed, and
+believed finished. Legacy packs are covered by the same
+construction: the watch keys on `SIGNED_OFF`, never on
+the sign-off chain, so a single-signature pack from
+before the chain is watched like any other.
+
+**What it never touches.** Reading the watch writes
+nothing (pinned: the store is byte-identical across it);
+recording an acknowledgement writes only the
+acknowledgement record (pinned the same way, around the
+act). The signed pack, its figures, variances, chain,
+and any evidence bundle already generated are
+byte-identical across both. The original pack's bundle
+deliberately does not cite the watch: the bundle is the
+evidence *of the close*, generated from the record as it
+stood, and post-sign-off governance is a later record
+with its own surface — citing it inside the bundle would
+make regeneration non-identical the day a movement
+landed, breaking the bundle's one promise. Readiness is
+untouched (it governs periods before they build; the
+watch governs them after they sign; neither reads the
+other's records).
+
 ## Data model
 
-Four migrations, six JSONB tables mirroring the sibling
+Five migrations, seven JSONB tables mirroring the sibling
 blueprints' record discipline:
 
 - `source_batches` — every extract ever ingested, append-only
@@ -1104,6 +1229,17 @@ blueprints' record discipline:
   waiver is consulted by every build the period attempts —
   so they are an aggregate of their own, not rows on a run
   or a pack.
+- `source_watch_records` — the source-watch
+  acknowledgements (`0005_source_watch.sql`): one JSONB
+  record per acknowledgement, keyed by record id with
+  kind, period, and slot columns for lookup. A migration
+  on the same justification again: the acknowledgement
+  answers for a signed pack it may never be written to,
+  and it must be listable per period and per slot without
+  opening the pack — so it is an aggregate of its own.
+  The watch itself stores nothing else: items and states
+  are computed on read from the packs' stamps, the
+  chains, and these records.
 
 Raw extract bytes are additionally archived to object storage
 at ingestion (`extracts/<period>/<batch_id>.json`), so the
