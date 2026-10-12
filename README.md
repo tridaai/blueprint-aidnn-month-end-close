@@ -400,6 +400,53 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   a service still wired to the old version to show the rule,
   not the wiring, doing the selecting.
 
+- **The close does not start on missing sources** — before
+  any of that, a period's close is checked against what it
+  *expects* to receive, not just what the checklist requires
+  to be present. The expectation is itself governed data: an
+  **expectation manifest** a named controller records for
+  the period — one entry per source slot, with the delivery
+  version expected where one is stated — amended only by a
+  new version naming the one it supersedes, so the version
+  that governed a check or a build is citable. The
+  **readiness check** is a pure read over a run's received
+  sources (it registers nothing, mutates nothing): every
+  entry's state — ok, missing, version **short**, version
+  **ahead** (batch versions are per-batch content stamps, so
+  any version other than the expected one is a different
+  delivery; the remedy for a legitimate newer delivery is to
+  amend the manifest) — plus the rate table judged as
+  *coverage*: a table carried on the FX batch, with a rate
+  for every currency the period's entities book in, checked
+  before the build instead of failing unnamed inside it.
+  The prior period's state (signed, pack cited / no prior
+  close / packs but none signed) rides the report as a named
+  fact, never a failure: the build requires nothing of the
+  prior period, because comparatives are defined over the
+  signed record and degrade to absent by design. A build
+  whose readiness fails is **refused by name** at the one
+  service door every surface builds through, listing the
+  uncovered items in the check's own words — unless a named
+  controller has recorded a **readiness waiver** covering
+  exactly those items (actor + reason + the items named; a
+  blanket waiver is refused, as is an item the check is not
+  currently failing on, and any waiver for a period already
+  signed). A pack built under waiver **states it on its
+  face** — the items it started without, waived by whom and
+  why — and its evidence bundle carries the manifest and
+  the waiver records it cites; a pack built complete states
+  that too, with the manifest version cited. The bundled
+  periods' manifests are **derived**, not invented: each is
+  the terminal delivery per slot of the batches the close
+  actually used (September's expects the corrected extracts
+  and the revised rate table at v2; October and November
+  closed on first deliveries throughout), recorded as data
+  through the same service a deployment's controller would
+  use. Surfaces: the API (`GET /runs/{id}/readiness`,
+  `POST /manifests`, `POST /waivers`), the CLI (`readiness`,
+  `record-manifest`, `record-waiver`), and the console (the
+  run's readiness, and the statement on every pack).
+
 ## The aidnn seam
 
 aidnn is a deployed product application, not a public API
@@ -469,6 +516,15 @@ Copy `.env.example` to `.env` and set what you use:
   period that closed and signed — there is no measuring
   against a draft close, because a draft's sources are still
   moving.
+- Expectation manifests are authored data, like definition
+  packs. In a deployment, the period's controller writes
+  the manifest from the close calendar — which extracts, at
+  which delivery versions — and amends it the same governed
+  way when the calendar changes. The manifests bundled here
+  are derived from the synthetic worlds (the terminal
+  delivery per slot of the batches each close actually
+  used); they demonstrate the machinery over history, they
+  are not a claim about any real close's expectations.
 - The signed pack is a record of approval, not a posting.
   Filing, posting, and payment stay in the customer's systems
   of record, by design.
@@ -596,6 +652,24 @@ gates on it:
   figure, while an FX batch edited in place (EUR 1.15 under
   the same version) reprices no drill — conversions stand
   on the stamp.
+- **Pre-close readiness** — an eighth act checks the close
+  before it starts: September on its opening deliveries
+  fails on exactly the three version items its derived
+  manifest implies, the build is refused with the items
+  named, and blanket and non-failing-item waivers are
+  refused by name, as is a waiver for the by-then-signed
+  period; waived exactly, the opening build proceeds and
+  states the waiver, and the corrected rebuild states
+  COMPLETE with the manifest cited. October staged short
+  two extracts fails on exactly those two slots; its
+  manifest amended to expect HLE's AR at v2, a waiver on
+  record for a different item unblocks nothing, and the
+  waiver covering exactly the version item lets the build
+  proceed — the pack's face states it, and the signed
+  pack's evidence bundle carries the manifest (v2) and the
+  waiver record. The check is a pure read (the store is
+  byte-identical across it), and the September pack signed
+  in the act is byte-identical at the end of everything.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -615,6 +689,7 @@ src/aidnn_close_agent/
   governance.py     definition change: dry-runs, activations, selection
   evidence.py       the audit evidence pack: gated, checked projection
   drill.py          figure drill-down: every figure re-performed to its lines
+  readiness.py      pre-close readiness: manifests, the check, the waiver math
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate

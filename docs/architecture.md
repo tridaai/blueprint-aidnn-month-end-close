@@ -832,9 +832,127 @@ source moved under the signed pack's stamps after signing
 records both totals and no digest, in the same spirit as a
 dispositioned figure keeping its true verdict.
 
+## Pre-close readiness: the close does not start on missing sources
+
+The checklist in the section above is a presence machine: a
+slot is either filled or it isn't, and the run's status is
+the whole story. Presence is the floor a build must clear,
+but it is not what a close *expects*. A close expects
+specific deliveries — the corrected GL extract, not any GL
+extract; a rate table that can actually convert the
+period's currencies — and until round 10 nothing in the
+system could say so. A missing or superseded extract
+surfaced late: as a variance on the pack, an unnamed
+`KeyError` when a conversion met a currency the received
+table didn't carry, or a figure that simply felt wrong.
+Readiness moves that knowledge to before the build, as
+governed data.
+
+**The expectation manifest.** Per period, a named
+controller records what the close expects: one entry per
+source slot (the same `ENTITY:kind` / `GROUP:kind`
+identity the run's checklist uses), the delivery version
+expected where one is stated, and the batch id the
+expectation was taken from, where it was. The record names
+its author and carries a note — where the expectation
+comes from — and it is append-only in the by-now-familiar
+way: amending what a period expects is a new *version* of
+the manifest naming the one it supersedes, so the version
+that governed a check or a build stays citable. The
+manifests for the bundled periods are **derived**, and
+the derivation is a stated rule, not a quiet invention:
+for each slot, the terminal delivery of the world's
+supersession chain — the batch the close actually used.
+September's manifest therefore expects HLD:gl, HLE:gl,
+and GROUP:fx at v2 (the corrected extracts and the revised
+table its signed close stood on) and everything else at
+v1; October and November closed on first deliveries
+throughout. A deployment's controller authors manifests
+from the close calendar the same way, through the same
+service calls.
+
+**The check.** `readiness.check_readiness` is a pure
+function of the store, the run, the governing definition
+pack, and the manifest: it registers nothing and mutates
+nothing (pinned: the store is byte-identical across a
+check). Each entry is judged ok / missing / short / ahead.
+The version rule is **exact equality**, and it is worth
+saying why: batch versions in this system are per-batch
+content stamps — a delivery *is* a specific version — so a
+received batch at any other version is a different
+delivery. Below the expectation, the close would start on
+a superseded extract. Above it, the manifest predates the
+delivery, and the governed remedy is to amend the
+manifest, not to pretend the expectation covered it. An
+entry may state no version, in which case presence is the
+whole expectation for that slot. The rate table is judged
+as **coverage**: the FX batch must carry a table, and the
+table must carry a rate for every currency the governing
+pack's entities book in (other than the reporting
+currency) — the currencies come from the definition pack
+that will actually build the period, so the check judges
+the table the build would use. Each failure becomes a
+named item whose name is its identity — the slot for a
+missing source, slot + both versions for a mismatch,
+`FX:EUR (no rate in table v3)` for a rate gap — because a
+waiver must name items in exactly those words. The prior
+period's state rides the report as information —
+`SIGNED` with the pack cited, `NO_PRIOR_CLOSE` (a first
+close), or `PRIOR_UNSIGNED` — and is never a failure:
+surveying what the build actually assumes about the prior
+period shows it assumes *nothing*. Comparatives are
+defined over the prior period's signed pack and degrade to
+absent when there is none; carried items flow through
+signed packs only. A readiness rule that blocked on an
+unsigned prior period would invent a requirement the close
+does not have, so the report states the fact and the gate
+ignores it.
+
+**The gate and the waiver.** The gate sits in
+`CloseService.build_pack` — the one door the API, the CLI,
+the demo, and the evals all build through — after the
+standing checklist refusal (presence first) and after pack
+selection (the check judges the governing pack's
+currencies). When a manifest governs the period and the
+check fails, the build is refused with a `ReadinessError`
+naming every uncovered item and the manifest it failed
+under — unless the period's waivers cover the failing
+items. A **waiver** is a named controller's record: actor,
+reason, and the exact items it covers. Recording refuses,
+each by name: no actor; no reason; a blanket waiver (a
+licence covering whatever turns out to be missing is not a
+record a controller may make); a period already signed (a
+waiver governs a close still to be built); no run for the
+period (the check runs against a run's received sources —
+there is nothing to waive against); no manifest (no stated
+expectation, so no named failure exists to accept); and
+any item the period's current check is not failing on.
+Coverage is re-derived at build time from the *current*
+check, so a waiver written against one failure never
+stretches to a different one — an October waiver for a
+missing CRM extract does nothing for an AR delivery that
+arrives a version short, and the eval pack pins exactly
+that. A pack built under a manifest carries the outcome on
+its face: a `ReadinessStatement` — COMPLETE with the
+manifest id and version cited, or WAIVED with the items
+listed and each covering waiver cited (id, actor, reason,
+the subset it covered) — plus a `readiness_stated` audit
+event in the same words. Its evidence bundle resolves the
+citations the way it resolves the governance ones: the
+manifest record must stand at the cited version, and every
+cited waiver must stand with the actor, reason, and items
+the citation quotes, or generation refuses with the gap
+named; a close that ran with no manifest projects
+`readiness: null`, the honest absence. A period with no
+manifest is deliberately unchanged behaviour — the
+standing checklist alone gates it, and its packs carry no
+statement: readiness is an expectation a controller chose
+to state, and where none was stated the system does not
+invent one.
+
 ## Data model
 
-Three migrations, five JSONB tables mirroring the sibling
+Four migrations, six JSONB tables mirroring the sibling
 blueprints' record discipline:
 
 - `source_batches` — every extract ever ingested, append-only
@@ -866,6 +984,16 @@ blueprints' record discipline:
   run or pack — an activation is written before the periods
   it governs have runs at all — so they cannot ride another
   aggregate's payload.
+- `readiness_records` — the expectation manifests and the
+  readiness waivers (`0004_readiness.sql`): one JSONB
+  record per governance act, keyed by record id with kind
+  and period columns for lookup. A migration again, on the
+  same justification: a period's readiness records belong
+  to the period's close, not to any one build of it — a
+  manifest is written before the period's run exists, and a
+  waiver is consulted by every build the period attempts —
+  so they are an aggregate of their own, not rows on a run
+  or a pack.
 
 Raw extract bytes are additionally archived to object storage
 at ingestion (`extracts/<period>/<batch_id>.json`), so the
