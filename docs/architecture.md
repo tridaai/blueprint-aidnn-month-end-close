@@ -749,6 +749,89 @@ extract a manifest line names and checks its hash against
 the bundle, rather than trusting a copy of the extract
 embedded in the artifact that cites it.
 
+## Figure drill-down: the last mile, re-performed
+
+The bundle lets an auditor re-perform the *close*. The drill
+(`drill.py`) answers the per-figure question the bundle
+cannot: which journal lines, in which batches, sum to *this*
+number. It is a third computation of the figure — after the
+engine's proposal and the verifier's recomputation — and it
+is deliberately independent of both: it flattens the pack's
+stamped batches with its own scan (applying the pack's
+duplicate rule itself: a repeated journal id inside one
+extract counts once, first copy), sums with its own code,
+and converts at the rate table the pack stamps. It reads
+nothing from the marts and nothing from the verifier; the
+only stored number it trusts is the one it must foot to —
+the figure on the pack record.
+
+Coverage follows the definition's shape, and stops where the
+shape stops. Base GL figures drill to their lines, each
+carrying batch and version, journal and position within it,
+account, both stated amounts, and the signed contribution in
+entity currency. CRM figures drill to their records.
+Eliminations drill to both legs — every intercompany line on
+each account, grouped per entity — and the matched amount is
+stated as the rule it is (the lesser converted leg).
+Converted figures drill per entity: lines, subtotal, the
+stamped rate, the converted subtotal. Conversion is shown at
+the subtotal because the close converts subtotals — a
+per-line converted amount would be a precision the close
+never computed, and the drill does not fabricate precision.
+Derived figures carry no lines at all: an `add` / `subtract`
+/ `vs_plan` figure's drill is its composition tree, the
+operands' drills nested with the operator named, and the
+plan baseline appears as a `plan` node — authored data from
+the definition pack, labelled as such, because the figure
+stands on it and pretending it is a source line would be the
+one lie this layer exists to avoid. A base definition whose
+measure the close gives no line semantics (`sum_amount` over
+GL lines — the measure belongs to CRM records, and neither
+the engine nor the verifier defines it over journal lines)
+is refused by name: the drill approximates nothing.
+
+The identity is enforced at the root: the composition must
+equal the figure on the pack, Decimal-exact, or the drill is
+not served — `DRILL_MISMATCH` names the figure and both
+totals. This is the tamper detector working as designed: a
+source record edited under a pack's stamps changes the
+composition, not the recorded figure, and the drill says so
+instead of footing a lie. An FX batch edited in place moves
+nothing: like the verifier, the drill judges conversions at
+the stamp, and a later table reprices no drill.
+
+Any pack state may be drilled. The drill is computed from
+the pack's *stamps* — the batch ids and versions on its
+record, the rate table on its record — never from the run's
+current slot map, so a stale pack still drills truthfully on
+the sources it was built from, and a blocked pack shows the
+lines behind the figures it proposed. The pack's state rides
+the drill (`pack_status`), named on its face, following the
+evidence idiom: state is disclosed wherever an artifact
+could be misread, and refusal is reserved for what would
+make the artifact false — a figure the pack does not carry,
+a stamped batch missing from the store or standing at
+another version, a definition version that cannot be
+resolved.
+
+The bundle's `drills` section is where the two layers meet:
+for each figure, the composed total, the line count, and a
+SHA-256 digest of the full drill, computed at assembly time
+by performing the drill. The size tradeoff is deliberate —
+the bundle already manifests the extracts by hash, and
+embedding every line of every figure would duplicate that
+content at length; a citation by digest keeps the bundle the
+size of the close's *claims*, while the drill endpoint (or
+CLI, or console) re-performs the full tree against the same
+pack on demand and the digest either reproduces or something
+moved. Because stamps and sources persist for any signed
+pack, the section has no absence case — unlike `flux` or
+`fx`, there is no pre-drill signed pack whose bundle must
+confess a gap. The one non-footing entry is a mismatch: a
+source moved under the signed pack's stamps after signing
+records both totals and no digest, in the same spirit as a
+dispositioned figure keeping its true verdict.
+
 ## Data model
 
 Three migrations, five JSONB tables mirroring the sibling

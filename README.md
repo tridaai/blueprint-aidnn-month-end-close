@@ -326,6 +326,40 @@ extracts ──► ingest ──► marts ──► engine ──► VERIFY ─�
   naming the gap), and its canonical bytes regenerate
   byte-identically, with the SHA-256 digest carried on the
   bundle record.
+- **Figure drill-down** — every figure on any pack opens into
+  the exact lines it stands on. The drill is a
+  **re-performance, not a report**: it walks the batches the
+  pack stamps (at their stamped versions), under the
+  definitions the pack cites and the rate table the pack
+  stamps, with its own aggregation — never the engine's
+  numbers, never the marts, never the verifier's totals. A
+  base figure drills to its journal lines (batch, journal,
+  account, both stated amounts, the signed contribution); an
+  elimination drills to **both legs**; a converted figure
+  drills per entity — lines in entity currency, the subtotal,
+  the stamped rate, the converted subtotal — because the
+  close converts a subtotal once and the drill will not dress
+  lines with conversions it never computed; a derived figure
+  drills as its **composition tree**, the operands' drills
+  nested with the operator named, and the `vs_plan` baseline
+  shown as authored data, never as a source line. The drill
+  is served only when its composition foots to the figure on
+  the pack, Decimal-exact: a source record moved under the
+  pack's stamps raises **`DRILL_MISMATCH`** naming the figure
+  and both totals, and a measure the close gives no line
+  semantics (`sum_amount` over GL lines) is refused by name
+  rather than approximated. Any pack state drills — blocked
+  and stale packs drill on their own stamps, the state named
+  on the drill, because auditors drill blocked packs too. The
+  evidence bundle cites each figure's drill by **digest**
+  (composed total + line count + a hash of the full drill)
+  rather than embedding every line: the lines are the
+  manifested extracts' own content, and the full drill is one
+  call away against the same pack, reproducible byte for
+  byte — a source moved after signing is recorded in the
+  bundle as the mismatch it is, never cited clean. Surfaces:
+  the API (`GET /packs/{id}/figures/{metric}/drill`), the CLI
+  (`drill`), and a Drill button on every console figure row.
 
 - **Definition changes are governed, not dropped in** — the
   definition pack is the close's constitution, and changing
@@ -545,6 +579,23 @@ gates on it:
   its face; and its evidence bundle carries the activation
   and the dry-run, while September's bundle — a close with
   no change to state — projects `definition_change: null`.
+- **Figure drill-down** — a seventh act opens the figures:
+  all 25 figures on both signed packs re-perform to their
+  lines and compose exactly; September's HLE external
+  revenue is precisely the two corrected-extract lines; the
+  elimination shows both legs with the EUR leg converted at
+  the stamped 1.10; the converted figure converts once per
+  entity at the stamp; derived figures compose from their
+  operands' drills and stand on no lines of their own, the
+  plan shown as authored data; both bundles cite every drill
+  by a digest a fresh drill reproduces. The blocked first
+  pack drills with its duplicated journal counted once, and
+  the stale pack drills on its own v1 stamps after the world
+  moved. On a fresh store, a source line edited under a
+  signed pack's stamps raises `DRILL_MISMATCH` naming the
+  figure, while an FX batch edited in place (EUR 1.15 under
+  the same version) reprices no drill — conversions stand
+  on the stamp.
 
 A live-engine run (`EVAL_LIVE=1` with a workspace configured)
 is reported, never gated.
@@ -563,6 +614,7 @@ src/aidnn_close_agent/
   dispositions.py   variance disposition: acceptances, coverage, the carry
   governance.py     definition change: dry-runs, activations, selection
   evidence.py       the audit evidence pack: gated, checked projection
+  drill.py          figure drill-down: every figure re-performed to its lines
   fx.py             money, FX conversion, the one rounding rule
   guardrails.py     injection screen + the checklist function
   graph.py          the LangGraph pipeline and its controller gate
