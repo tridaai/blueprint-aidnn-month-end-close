@@ -223,6 +223,20 @@ def create_app(service: CloseService | None = None) -> FastAPI:
     def get_pack(pack_id: str) -> dict:
         return svc().get_pack(pack_id).model_dump()
 
+    @app.get("/packs/{pack_id}/figures/{metric_id}/drill")
+    def figure_drill(pack_id: str, metric_id: str,
+                     entity: str | None = None) -> dict:
+        """Open one figure into the source lines it stands on:
+        a re-performance from the pack's stamped sources at
+        the stamped rates, served only when the composition
+        foots to the figure. Refused (404) when the pack
+        carries no such figure; refused (409, ground named)
+        when a stamped source is missing or moved, or when
+        the composition does not foot — ``DRILL_MISMATCH``.
+        Any pack state may be drilled; the state rides the
+        drill."""
+        return svc().figure_drill(pack_id, metric_id, entity).model_dump()
+
     @app.post("/packs/{pack_id}/sign-off")
     def sign_off(pack_id: str, request: SignOffRequest) -> dict:
         pack = svc().sign_off(pack_id, request.decision, request.actor,

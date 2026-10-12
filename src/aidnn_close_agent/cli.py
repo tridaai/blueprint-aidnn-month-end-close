@@ -75,6 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     p_disp.add_argument("--entity", default=None)
     p_disp.add_argument("--metric", default=None)
     p_disp.add_argument("--subject", default=None)
+    p_drill = sub.add_parser(
+        "drill",
+        help="open one figure on a pack into the source lines "
+             "it stands on — a re-performance from the pack's "
+             "stamped sources, served only when the composition "
+             "foots to the figure (DRILL_MISMATCH otherwise)")
+    p_drill.add_argument("pack_id")
+    p_drill.add_argument("metric_id")
+    p_drill.add_argument("--entity", default=None)
+    p_drill.add_argument("--text", action="store_true",
+                         help="print the readable tree instead "
+                              "of JSON")
     p_evidence = sub.add_parser(
         "evidence",
         help="generate a signed pack's audit evidence bundle "
@@ -133,6 +145,14 @@ def main(argv: list[str] | None = None) -> int:
                 reason=args.reason, entity_id=args.entity,
                 metric_id=args.metric, subject=args.subject)
             print(pack.model_dump_json(indent=2))
+        elif args.command == "drill":
+            drill = service.figure_drill(args.pack_id, args.metric_id,
+                                         args.entity)
+            if args.text:
+                from .drill import render_text
+                sys.stdout.write(render_text(drill))
+            else:
+                print(drill.model_dump_json(indent=2))
         elif args.command == "evidence":
             record = service.generate_evidence(args.pack_id)
             if args.download:

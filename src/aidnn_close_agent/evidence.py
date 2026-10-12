@@ -102,6 +102,25 @@ must match the citation, or generation refuses with the gap
 named. A pack with no change on its face projects
 ``definition_change: null`` — the close ran under the version
 its predecessor signed under, and there is nothing to cite.
+
+Figure drill-down (round 9) joins as ``drills``: for every
+figure, the drill re-performed at assembly time from the
+pack's stamped sources — its composed total, its source-line
+count, and a digest of the full drill. The bundle cites
+drills by digest rather than embedding every line: the lines
+are the extracts' own content, already manifested above by
+hash, and the full drill is one call away against the same
+pack, reproducible byte for byte — a reader who re-performs
+it checks the digest and holds the same artifact. There is
+no absence case: a signed pack's stamps and sources persist
+by construction, so every signed pack's section is populated.
+The one entry that is not a footing drill is a mismatch —
+when a source record has moved under a signed pack's stamps
+since signing, the figure's entry records the break (the
+composition the sources now produce, against the figure the
+board signed) instead of a digest: the bundle names it,
+exactly as it names a dispositioned figure's true verdict,
+and never papers over it with a clean citation.
 """
 
 from __future__ import annotations
@@ -110,13 +129,14 @@ import json
 from pathlib import Path
 
 from . import dispositions as dispositions_module
+from . import drill as drill_module
 from . import guardrails
 from .definitions import (
     DefinitionPack,
     bundled_pack_dir,
     load_definition_pack_version,
 )
-from .errors import EvidenceError
+from .errors import DrillError, DrillMismatch, EvidenceError
 from .fx import changed_currencies
 from .schemas import BoardPack
 
@@ -269,6 +289,48 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             "supersedes": batch.supersedes,
             "phase": batch.phase,
         })
+
+    # Figure drills: every figure re-performed from the
+    # stamped sources (the manifest above has already proven
+    # those sources stand at their stamped versions), cited
+    # by digest — the full lines are one drill call away
+    # against the same pack and reproduce byte for byte. A
+    # figure whose sources no longer compose to it (a record
+    # moved under the signed pack's stamps) is recorded as
+    # the mismatch it is, never as a footing citation.
+    drills: list[dict] = []
+    for figure in sorted(
+        pack.figures, key=lambda f: (f.metric_id, f.entity_id or "")
+    ):
+        entry: dict = {
+            "metric_id": figure.metric_id,
+            "entity_id": figure.entity_id,
+            "figure_value": figure.value,
+        }
+        try:
+            drill = drill_module.build_drill(
+                service.store, pack, definitions,
+                figure.metric_id, figure.entity_id)
+        except DrillMismatch as exc:
+            entry.update({
+                "composed_total": exc.composed_total,
+                "line_count": exc.line_count,
+                "digest": None,
+                "mismatch": True,
+            })
+        except DrillError as exc:
+            raise EvidenceError(
+                f"the drill for figure {figure.metric_id} on "
+                f"pack {pack.pack_id} cannot be performed: {exc}"
+            ) from exc
+        else:
+            entry.update({
+                "composed_total": drill.composed_total,
+                "line_count": drill.line_count,
+                "digest": drill_module.drill_digest(drill),
+                "mismatch": False,
+            })
+        drills.append(entry)
 
     run = service.store.get_run(pack.run_id)
     if run is None:
@@ -425,6 +487,7 @@ def assemble_bundle(service, pack: BoardPack) -> dict:
             "missing_sources": missing,
         },
         "figures": figures,
+        "drills": drills,
         "source_manifest": manifest,
         "fx_version": current_table.version
         if current_table is not None
@@ -530,6 +593,31 @@ def render_text(document: dict) -> str:
             f"    definition ({figure['definition_pack_version']}): "
             f"{_definition_summary(figure['definition'])}"
         )
+    drills = document.get("drills") or []
+    if drills:
+        lines.append("")
+        lines.append(
+            f"FIGURE DRILLS ({len(drills)}) — every figure "
+            "re-performed from its stamped sources; the digest "
+            "is of the full drill (every line), and the drill "
+            "itself is reproducible against the pack:")
+        for entry in drills:
+            scope = entry["entity_id"] or "consolidated"
+            if entry["mismatch"]:
+                lines.append(
+                    f"  {entry['metric_id']} · {scope} · "
+                    f"MISMATCH: the stamped sources now compose "
+                    f"to {entry['composed_total']}, but the "
+                    f"signed figure records "
+                    f"{entry['figure_value']} — a source record "
+                    "moved under the signed pack's stamps")
+            else:
+                lines.append(
+                    f"  {entry['metric_id']} · {scope} · composed "
+                    f"{entry['composed_total']} = figure "
+                    f"{entry['figure_value']} · "
+                    f"{entry['line_count']} line(s) · drill "
+                    f"sha256 {entry['digest']}")
     lines.append("")
     lines.append(f"SOURCE MANIFEST ({len(document['source_manifest'])}) "
                  "— the extracts the close consumed, hashes as "

@@ -210,7 +210,43 @@ async function showRun(runId, runs) {
     btn.addEventListener("click", () => generateEvidence(btn.dataset.evidence)));
   document.querySelectorAll("[data-dispose]").forEach(btn =>
     btn.addEventListener("click", () => disposeVariance(btn.dataset.dispose)));
+  document.querySelectorAll("[data-drill]").forEach(btn =>
+    btn.addEventListener("click", () => loadDrill(btn.dataset.drill)));
   if (run.pack_ids) run.pack_ids.forEach(loadEvidence);
+}
+
+async function loadDrill(spec) {
+  const [packId, metricId, entity] = spec.split("|");
+  const slot = $("drill-" + packId);
+  if (!slot) return;
+  slot.innerHTML = `<p class="note">Re-performing ${metricId} from the pack's stamped sources…</p>`;
+  try {
+    const drill = await api(`/packs/${packId}/figures/${metricId}/drill` + (entity ? `?entity=${entity}` : ""));
+    slot.innerHTML = `<div class="narrative" style="margin-top:10px;">
+      <strong>Drill — ${drill.label}</strong> · pack status ${drill.pack_status} · figure ${drill.currency} ${money(drill.figure_value)} · composed ${money(drill.composed_total)} · ${drill.line_count} source line(s)/record(s) · rates: ${drill.fx_basis}
+      ${drillNodeHtml(drill.root, 0)}
+    </div>`;
+  } catch (e) {
+    slot.innerHTML = `<p class="flag">✗ drill refused — ${e.message}</p>`;
+  }
+}
+
+function drillNodeHtml(node, depth) {
+  const scope = node.entity_id || node.kind;
+  const signed = node.sign < 0 ? "-" + node.value : node.value;
+  let html = `<div style="margin-left:${depth * 18}px; margin-top:6px;"><strong>${node.metric_id} · ${scope}</strong> — ${node.currency} ${money(signed)}`;
+  if (node.pre_conversion_value !== null && node.pre_conversion_value !== undefined)
+    html += ` <span class="note">(from ${node.pre_conversion_currency} ${money(node.pre_conversion_value)} at rate ${node.rate})</span>`;
+  html += `</div>`;
+  if (node.note) html += `<div class="note" style="margin-left:${depth * 18}px;">${node.note}</div>`;
+  (node.lines || []).forEach(l => {
+    html += `<div class="note" style="margin-left:${depth * 18 + 12}px;">${l.batch_id} (v${l.batch_version}) · ${l.journal_id} · line ${l.line_index} · account ${l.account} · debit ${money(l.debit)} · credit ${money(l.credit)} · contributes ${l.currency} ${money(l.amount)}${l.ic_counterparty ? " · ic → " + l.ic_counterparty : ""}</div>`;
+  });
+  (node.records || []).forEach(r => {
+    html += `<div class="note" style="margin-left:${depth * 18 + 12}px;">${r.batch_id} (v${r.batch_version}) · ${r.name} · ${r.currency} ${money(r.amount)}</div>`;
+  });
+  (node.children || []).forEach(c => { html += drillNodeHtml(c, depth + 1); });
+  return html;
 }
 
 async function loadEvidence(packId) {
@@ -244,11 +280,14 @@ function packHtml(pack) {
     <dt>FX table (stamped)</dt><dd>${pack.source_versions.fx_table ? "v" + pack.source_versions.fx_table.version + " · " + Object.entries(pack.source_versions.fx_table.rates).map(([c, r]) => c + " " + r).join(", ") : "v" + pack.source_versions.fx_version + " — rates not stamped (pack predates rate stamping)"}</dd>
     <dt>Source batches</dt><dd>${Object.entries(pack.source_versions.batches).map(([b, v]) => b + " (v" + v + ")").join(", ")}</dd></dl>`;
   (pack.variances || []).forEach(v => html += `<p class="flag">✗ ${v.code} — ${v.detail}</p>`);
-  html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th></tr></thead><tbody>`
+  html += `<table style="margin-top:10px;"><thead><tr><th>Figure</th><th>Scope</th><th style="text-align:right;">Value</th><th>Check</th><th></th></tr></thead><tbody>`
     + pack.figures.map(f => `<tr><td>${f.label}</td><td>${f.entity_id || f.scope}</td>
       <td class="num">${f.currency} ${money(f.value)}</td>
-      <td class="status st-${f.status}">${f.status}${f.ic_disagreement ? ` <span class="flag">· IC disputed</span>` : ""}</td></tr>`).join("")
-    + `</tbody></table>`;
+      <td class="status st-${f.status}">${f.status}${f.ic_disagreement ? ` <span class="flag">· IC disputed</span>` : ""}</td>
+      <td><button class="secondary" data-drill="${pack.pack_id}|${f.metric_id}|${f.entity_id || ""}">Drill</button></td></tr>`).join("")
+    + `</tbody></table>
+  <div id="drill-${pack.pack_id}"></div>
+  <p class="note">Drill re-performs a figure from the pack's stamped sources — every journal line it stands on, conversions at the stamped rate — and is served only when the lines compose to the figure. A composition that no longer foots is refused as DRILL_MISMATCH, never smoothed over.</p>`;
   html += icPairsHtml(pack);
   html += comparativesHtml(pack);
   html += fluxHtml(pack);
