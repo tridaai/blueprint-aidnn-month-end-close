@@ -32,6 +32,21 @@ from aidnn_close_agent.store import InMemoryCloseStore
 CONTROLLER = "Mara Ellison"
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def _service(store, pack_def, objects=None) -> CloseService:
     pipeline = PackPipeline(
         engine=OfflineFinanceEngine(), store=store, pack=pack_def,
@@ -53,6 +68,7 @@ def _close_september(service, world):
     service.ingest(run.run_id,
                    [b.batch_id for b in world.batches_in_phase("late")])
     second = service.build_pack(run.run_id)
+    _chain(service, second.pack_id)
     signed = service.sign_off(second.pack_id, "sign", CONTROLLER,
                               "figures verified; variances cleared")
     return service.get_pack(first.pack_id), signed
@@ -271,6 +287,7 @@ def test_october_bundle_carries_comparatives_restatement_and_ack(
     pack = october_service.build_pack(run.run_id)
     october_service.acknowledge_restatement(
         pack.pack_id, CONTROLLER, "Reviewed the HLG payroll restatement.")
+    _chain(october_service, pack.pack_id)
     signed_october = october_service.sign_off(pack.pack_id, "sign",
                                               CONTROLLER)
 
@@ -344,6 +361,14 @@ def test_evidence_over_http(service, world):
     # Nothing generated yet: the record read is a 404.
     assert client.get(f"/packs/{pack_id}/evidence").status_code == 404
 
+    prepared = client.post(f"/packs/{pack_id}/prepare",
+                           json={"actor": PREPARER})
+    assert prepared.status_code == 200
+    reviewed = client.post(
+        f"/packs/{pack_id}/review",
+        json={"actor": REVIEWER,
+              "note": "reviewed the variances and the figures"})
+    assert reviewed.status_code == 200
     signed = client.post(f"/packs/{pack_id}/sign-off",
                          json={"decision": "sign", "actor": CONTROLLER})
     assert signed.status_code == 200

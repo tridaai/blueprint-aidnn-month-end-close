@@ -43,6 +43,21 @@ from aidnn_close_agent.store import InMemoryCloseStore
 CONTROLLER = "Mara Ellison"
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def _service(store, pack_def) -> CloseService:
     pipeline = PackPipeline(
         engine=OfflineFinanceEngine(), store=store, pack=pack_def,
@@ -76,6 +91,7 @@ def signed_september(store, world, pack_def):
     service.ingest(run.run_id,
                    [b.batch_id for b in world.batches_in_phase("late")])
     pack = service.build_pack(run.run_id)
+    _chain(service, pack.pack_id)
     signed = service.sign_off(pack.pack_id, "sign", CONTROLLER,
                               "September close approved")
     return service, signed
@@ -400,6 +416,7 @@ def test_bundles_carry_the_flux_section(october):
     service, pack, _ = october
     service.acknowledge_restatement(
         pack.pack_id, CONTROLLER, "Reviewed the HLG payroll restatement.")
+    _chain(service, pack.pack_id)
     signed = service.sign_off(pack.pack_id, "sign", CONTROLLER)
     record = service.generate_evidence(signed.pack_id)
     data, _ = service.evidence_download(signed.pack_id, "json")

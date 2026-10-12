@@ -54,10 +54,32 @@ def test_sign_off_over_http(client):
     anonymous = client.post(f"/packs/{pack_id}/sign-off",
                             json={"decision": "sign", "actor": ""})
     assert anonymous.status_code == 409
+    # The signature is the chain's third act: with no
+    # preparation on the pack, it is refused by name.
+    unprepared = client.post(
+        f"/packs/{pack_id}/sign-off",
+        json={"decision": "sign", "actor": "Mara Ellison"})
+    assert unprepared.status_code == 409
+    assert "has not been prepared" in unprepared.json()["detail"]
+    prepared = client.post(f"/packs/{pack_id}/prepare",
+                           json={"actor": "Priya Nair"})
+    assert prepared.status_code == 200
+    # The preparer cannot review their own preparation.
+    own_review = client.post(
+        f"/packs/{pack_id}/review",
+        json={"actor": "Priya Nair", "note": "looked at it"})
+    assert own_review.status_code == 409
+    reviewed = client.post(
+        f"/packs/{pack_id}/review",
+        json={"actor": "Jonas Weber",
+              "note": "reviewed the variances and the figures"})
+    assert reviewed.status_code == 200
     signed = client.post(f"/packs/{pack_id}/sign-off",
                          json={"decision": "sign", "actor": "Mara Ellison"})
     assert signed.status_code == 200
     assert signed.json()["status"] == "SIGNED_OFF"
+    chain = signed.json()["signoff_chain"]
+    assert [a["role"] for a in chain] == ["preparer", "reviewer"]
     # A second decision on a signed pack is refused.
     again = client.post(f"/packs/{pack_id}/sign-off",
                         json={"decision": "sign", "actor": "Mara Ellison"})

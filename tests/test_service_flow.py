@@ -7,6 +7,21 @@ import pytest
 from aidnn_close_agent.errors import ChecklistIncomplete, GateError
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def test_build_before_ingestion_is_refused(service):
     run = service.create_run("2026-09")
     with pytest.raises(ChecklistIncomplete) as excinfo:
@@ -70,6 +85,7 @@ def test_corrected_close_verifies_and_signs(service, run_corrected, world):
     assert "1,796,500.00" in pack.narrative
     assert pack.source_versions.fx_version == 2
 
+    _chain(service, pack.pack_id)
     signed = service.sign_off(pack.pack_id, "sign", "Mara Ellison",
                               "variances cleared")
     assert signed.status == "SIGNED_OFF"
@@ -86,6 +102,7 @@ def test_sign_off_must_name_the_controller(service, run_corrected):
 
 def test_return_path_records_the_reason(service, run_corrected):
     pack = service.build_pack(run_corrected.run_id)
+    _chain(service, pack.pack_id)
     returned = service.sign_off(pack.pack_id, "return", "Mara Ellison",
                                 "recheck the pipeline figure with FP&A")
     assert returned.status == "RETURNED"
@@ -96,6 +113,7 @@ def test_return_path_records_the_reason(service, run_corrected):
 
 def test_closed_run_refuses_late_ingestion(service, run_corrected, world):
     pack = service.build_pack(run_corrected.run_id)
+    _chain(service, pack.pack_id)
     service.sign_off(pack.pack_id, "sign", "Mara Ellison")
     with pytest.raises(GateError):
         service.ingest(run_corrected.run_id, ["B-CRM-v1"])

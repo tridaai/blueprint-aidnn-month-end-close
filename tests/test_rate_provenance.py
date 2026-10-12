@@ -34,6 +34,21 @@ EDITED_TABLE = RateTable(
     version=3, reporting_currency="USD", rates={"EUR": "1.15"})
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def _current(world, phases=("initial", "late")):
     slots = {}
     for batch in world.batches:
@@ -189,8 +204,10 @@ def _october_service(service, world):
     service.build_pack(run.run_id)
     service.ingest(run.run_id,
                    [b.batch_id for b in world.batches_in_phase("late")])
+    rebuilt = service.build_pack(run.run_id)
+    _chain(service, rebuilt.pack_id)
     signed_september = service.sign_off(
-        service.build_pack(run.run_id).pack_id, "sign", "Mara Ellison")
+        rebuilt.pack_id, "sign", "Mara Ellison")
     pack_v110 = load_definition_pack_version("harborlight-close", "1.1.0")
     store = service.store
     pipeline = PackPipeline(
@@ -235,6 +252,7 @@ def test_rate_flags_mark_exactly_the_figures_eur_flows_through(
 
 def test_evidence_bundle_carries_rate_provenance(service, world):
     october, _, pack = _october_service(service, world)
+    _chain(october, pack.pack_id)
     signed = october.sign_off(pack.pack_id, "sign", "Mara Ellison")
     october.generate_evidence(signed.pack_id)
     data, _ = october.evidence_download(signed.pack_id, "json")
@@ -262,8 +280,10 @@ def test_evidence_for_a_pre_stamp_pack_reads_as_absent(service, world):
     service.build_pack(run.run_id)
     service.ingest(run.run_id,
                    [b.batch_id for b in world.batches_in_phase("late")])
+    rebuilt = service.build_pack(run.run_id)
+    _chain(service, rebuilt.pack_id)
     signed = service.sign_off(
-        service.build_pack(run.run_id).pack_id, "sign", "Mara Ellison")
+        rebuilt.pack_id, "sign", "Mara Ellison")
     stored = service.store.get_pack(signed.pack_id)
     figures = [
         figure.model_copy(update={

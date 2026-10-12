@@ -60,6 +60,21 @@ REASON = (
 )
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 @pytest.fixture()
 def pack_v100():
     return load_definition_pack(definition_pack_path())
@@ -120,6 +135,7 @@ def signed_two_months(pack_v100, pack_v110):
     september.ingest(run.run_id,
                      [b.batch_id for b in world.batches_in_phase("late")])
     rebuilt = september.build_pack(run.run_id)
+    _chain(september, rebuilt.pack_id)
     signed_september = september.sign_off(rebuilt.pack_id, "sign",
                                           CONTROLLER)
     assert signed_september.status == "SIGNED_OFF"
@@ -133,6 +149,7 @@ def signed_two_months(pack_v100, pack_v110):
     october.acknowledge_restatement(
         oct_pack.pack_id, CONTROLLER,
         "September restatement reviewed; comparatives stand as signed.")
+    _chain(october, oct_pack.pack_id)
     signed_october = october.sign_off(oct_pack.pack_id, "sign", CONTROLLER)
     assert signed_october.status == "SIGNED_OFF"
     return store, october, signed_september, signed_october
@@ -329,6 +346,7 @@ def test_family_changes_are_computed_not_asserted(pack_v100, pack_v110):
     september2.ingest(run.run_id,
                       [b.batch_id for b in world.batches_in_phase("late")])
     rebuilt = september2.build_pack(run.run_id)
+    _chain(september2, rebuilt.pack_id)
     september2.sign_off(rebuilt.pack_id, "sign", CONTROLLER)
     october2 = _service(store2, pack_v110)
     october_world = build_october_world()
@@ -467,6 +485,7 @@ def test_next_period_is_selected_and_states_the_change(
     # A second governed period states no change: once November
     # has signed under v1.2.0, the version did not change
     # under December — the statement is honestly absent.
+    _chain(november, pack.pack_id)
     november.sign_off(pack.pack_id, "sign", CONTROLLER)
     assert governance.prepare_change_statement(
         store, "2026-12", pack_v120, activation) is None
@@ -492,6 +511,7 @@ def test_bundle_carries_the_governance(signed_two_months):
 
     store, november, activation, _, pack = _november_pack(
         signed_two_months)
+    _chain(november, pack.pack_id)
     signed = november.sign_off(pack.pack_id, "sign", CONTROLLER)
     november.generate_evidence(signed.pack_id)
     data, _ = november.evidence_download(signed.pack_id, "json")
@@ -514,6 +534,7 @@ def test_bundle_refuses_when_the_cited_records_do_not_stand(
     a pack whose cited activation or dry-run is missing from
     the store cannot be evidenced."""
     store, november, _, _, pack = _november_pack(signed_two_months)
+    _chain(november, pack.pack_id)
     signed = november.sign_off(pack.pack_id, "sign", CONTROLLER)
     bare = InMemoryCloseStore()
     for batch in store.list_batches():

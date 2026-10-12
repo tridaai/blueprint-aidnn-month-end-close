@@ -63,6 +63,21 @@ REASON_LEG = (
 )
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def _service(store, pack_def, connector=None) -> CloseService:
     pipeline = PackPipeline(
         engine=OfflineFinanceEngine(), store=store, pack=pack_def,
@@ -150,6 +165,7 @@ def _signed_october_with_carry(pack_v110):
     blocked = service.build_pack(run.run_id)
     _disposition_both(service, blocked)
     presented = service.build_pack(run.run_id)
+    _chain(service, presented.pack_id)
     signed = service.sign_off(presented.pack_id, "sign", CONTROLLER,
                               "accepted on the record")
     return store, blocked, signed
@@ -179,6 +195,7 @@ def test_disposition_requires_a_named_controller_and_a_reason(
 
 def test_disposition_only_on_a_blocked_pack(service, run_corrected):
     awaiting = service.build_pack(run_corrected.run_id)
+    _chain(service, awaiting.pack_id)
     pack = service.sign_off(awaiting.pack_id, "sign", CONTROLLER,
                             "verified")
     assert pack.status == "SIGNED_OFF"
@@ -223,6 +240,7 @@ def test_restatement_variance_is_refused_by_name(pack_v110):
                      [b.batch_id for b in world.batches
                       if b.phase == "late"])
     awaiting = september.build_pack(run.run_id)
+    _chain(september, awaiting.pack_id)
     september.sign_off(awaiting.pack_id, "sign", CONTROLLER, "verified")
     september.receive_restatement(RESTATEMENT_BATCH_ID)
     october = _service(store, pack_v110,
@@ -316,6 +334,7 @@ def test_full_coverage_presents_and_the_face_carries_the_acceptances(
     assert all(d.actor == CONTROLLER for d in presented.dispositions)
     assert any(e["event"] == "presented_under_disposition"
                for e in presented.audit)
+    _chain(service, presented.pack_id)
     signed = service.sign_off(presented.pack_id, "sign", CONTROLLER,
                               "accepted on the record")
     assert signed.status == "SIGNED_OFF"
@@ -328,6 +347,7 @@ def test_evidence_bundle_lists_the_dispositions(variant_october):
     service, run, pack = variant_october
     _disposition_both(service, pack)
     presented = service.build_pack(run.run_id)
+    _chain(service, presented.pack_id)
     signed = service.sign_off(presented.pack_id, "sign", CONTROLLER,
                               "accepted on the record")
     service.generate_evidence(signed.pack_id)
@@ -377,6 +397,7 @@ def test_carried_break_still_present_blocks_again_and_counts_carry_two(
     presented = service.build_pack(run.run_id)
     assert presented.status == "AWAITING_CONTROLLER"
     assert all(d.carry_number == 2 for d in presented.dispositions)
+    _chain(service, presented.pack_id)
     signed = service.sign_off(presented.pack_id, "sign", CONTROLLER,
                               "second carry, on the record")
     assert signed.status == "SIGNED_OFF"
@@ -390,6 +411,7 @@ def test_carried_break_cleared_by_events_opens_and_closes(pack_v110):
     assert len(pack.opening_items) == 2
     assert all(item.retest == "CLEARED" for item in pack.opening_items)
     assert pack.dispositions == []  # nothing accepted, nothing carried on
+    _chain(service, pack.pack_id)
     signed = service.sign_off(pack.pack_id, "sign", CONTROLLER,
                               "the carried break cleared itself")
     assert signed.status == "SIGNED_OFF"
@@ -425,6 +447,7 @@ def test_a_dispositioned_mismatch_stands_in_the_bundle_unexplained_ones_refuse(
     face covers that exact variance, in which case the figure
     stands with its true verdict and its named acceptance."""
     awaiting = service.build_pack(run_corrected.run_id)
+    _chain(service, awaiting.pack_id)
     signed = service.sign_off(awaiting.pack_id, "sign", CONTROLLER,
                               "verified")
     doctored = signed.model_copy(deep=True)

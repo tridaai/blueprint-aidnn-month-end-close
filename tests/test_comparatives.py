@@ -31,6 +31,21 @@ from aidnn_close_agent.store import InMemoryCloseStore
 CONTROLLER = "Mara Ellison"
 
 
+PREPARER = "Priya Nair"
+REVIEWER = "Jonas Weber"
+
+
+def _chain(service, pack_id):
+    """Walk a pack through preparation and review, so the
+    controller's signature — the chain's third act — can
+    stand. The two earlier hands are neither file's
+    controller."""
+    service.prepare_pack(pack_id, PREPARER)
+    service.review_pack(pack_id, REVIEWER,
+                        "reviewed the pack's variances, "
+                        "dispositions, and readiness statement")
+
+
 def _service(store, pack_def) -> CloseService:
     pipeline = PackPipeline(
         engine=OfflineFinanceEngine(), store=store, pack=pack_def,
@@ -66,6 +81,7 @@ def signed_september(store, world, pack_def):
     service.ingest(run.run_id,
                    [b.batch_id for b in world.batches_in_phase("late")])
     pack = service.build_pack(run.run_id)
+    _chain(service, pack.pack_id)
     signed = service.sign_off(pack.pack_id, "sign", CONTROLLER,
                               "September close approved")
     return service, signed
@@ -195,6 +211,7 @@ def test_without_a_restatement_there_is_no_hold(store, signed_september,
     assert october.restatement is None
     assert october.variances == []
     assert len(october.comparatives) == 25
+    _chain(service, october.pack_id)
     signed = service.sign_off(october.pack_id, "sign", CONTROLLER)
     assert signed.status == "SIGNED_OFF"
 
@@ -220,6 +237,7 @@ def test_sign_off_is_refused_until_the_restatement_is_acknowledged(
         service.acknowledge_restatement(october.pack_id, CONTROLLER,
                                         "twice is not a thing")
 
+    _chain(service, october.pack_id)
     signed = service.sign_off(october.pack_id, "sign", CONTROLLER)
     assert signed.status == "SIGNED_OFF"
     # The variance and the acknowledgement stay on the record.
@@ -235,6 +253,7 @@ def test_the_signed_prior_pack_never_changes(store, signed_september,
     assert store.get_pack(signed.pack_id).model_dump_json() == at_sign_off
     service.acknowledge_restatement(october.pack_id, CONTROLLER,
                                     "seen and reviewed")
+    _chain(service, october.pack_id)
     service.sign_off(october.pack_id, "sign", CONTROLLER)
     assert store.get_pack(signed.pack_id).model_dump_json() == at_sign_off
 
@@ -297,6 +316,14 @@ def test_restatement_flow_over_http(store, signed_september, pack_v110):
     assert acked.status_code == 200
     assert acked.json()["restatement_acknowledgement"]["actor"] == CONTROLLER
 
+    prepared = client.post(f"/packs/{pack['pack_id']}/prepare",
+                           json={"actor": PREPARER})
+    assert prepared.status_code == 200
+    reviewed = client.post(
+        f"/packs/{pack['pack_id']}/review",
+        json={"actor": REVIEWER,
+              "note": "reviewed the comparatives and the restatement"})
+    assert reviewed.status_code == 200
     signed_october = client.post(
         f"/packs/{pack['pack_id']}/sign-off",
         json={"decision": "sign", "actor": CONTROLLER})
