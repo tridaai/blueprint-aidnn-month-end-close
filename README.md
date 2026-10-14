@@ -41,9 +41,7 @@ This is an independent Trida AI blueprint. It is **not
 affiliated with or endorsed by Isotopes AI**; it is built by
 Trida AI from public information about aidnn to show how a
 forward-deployed team would put the platform into production
-inside a multi-entity finance operation. Everything in the
-dataset is synthetic — there is no real company, ledger, or
-person anywhere in this repository.
+inside a multi-entity finance operation.
 
 > **Work in progress** — this blueprint is built and passing its automated test and eval gates, but it has not yet finished hands-on local testing, and its companion blog post is not yet published. Expect changes. This notice comes off when both are done.
 
